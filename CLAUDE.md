@@ -26,12 +26,16 @@ uv run ruff format .                          # format
 ## Architecture
 
 - `src/homepickle/` — main package (src layout, built with `uv_build`)
-  - `models.py` — `Property` and `SavedSearch` dataclasses
-  - `browser.py` — Playwright browser launch and Redfin login
-  - `scraper.py` — scrape saved searches and property listings
-  - `analyzer.py` — compute insights (price stats, medians)
+  - `models.py` — `Property` and `FavoriteList` dataclasses
+  - `browser.py` — Playwright browser launch and Redfin login (cookie-based auth)
+  - `scraper.py` — scrape favorites lists, property cards, and detail pages
+  - `analyzer.py` — compute insights (price stats, city breakdown, value outliers)
+  - `evaluator.py` — LLM evaluation via `claude -p` (non-interactive CLI)
+  - `storage.py` — SQLite cache (`~/.homepickle/homepickle.db`) for properties, evaluations, and sync state
+  - `__main__.py` — CLI entry point with commands: login, scrape, analyze, sync, evaluate, report, debug
 - `tests/` — unit tests (mirror the package structure)
-- `examples/` — generated structured JSON output (gitignored)
+- `examples/` — generated debug output (gitignored)
+- Data stored in `~/.homepickle/` (cookies.json, homepickle.db)
 
 ## Coding Standards
 
