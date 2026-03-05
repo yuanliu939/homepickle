@@ -32,7 +32,9 @@ uv run ruff format .                          # format
   - `analyzer.py` — compute insights (price stats, city breakdown, value outliers)
   - `evaluator.py` — LLM evaluation via `claude -p` (non-interactive CLI)
   - `storage.py` — SQLite cache (`~/.homepickle/homepickle.db`) for properties, evaluations, and sync state
-  - `__main__.py` — CLI entry point with commands: login, scrape, analyze, sync, evaluate, report, debug
+  - `web.py` — Flask web UI for browsing properties and evaluations
+  - `templates/` — Jinja2 HTML templates (base, index, property detail)
+  - `__main__.py` — CLI entry point with commands: login, scrape, analyze, sync, evaluate, report, web, debug
 - `tests/` — unit tests (mirror the package structure)
 - `examples/` — generated debug output (gitignored)
 - Data stored in `~/.homepickle/` (cookies.json, homepickle.db)

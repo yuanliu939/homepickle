@@ -4,9 +4,10 @@ Usage:
     uv run homepickle login              # Interactive login, saves cookies
     uv run homepickle scrape             # Scrape favorites and print JSON
     uv run homepickle analyze            # Scrape and print analysis report
-    uv run homepickle sync              # Scrape, diff, evaluate new/changed, cache
+    uv run homepickle sync [--quiet]     # Scrape, diff, evaluate new/changed, cache
     uv run homepickle evaluate [url]     # LLM evaluation (one URL or all cached)
     uv run homepickle report             # Show all cached evaluations
+    uv run homepickle web [--port N]     # Start the web UI
     uv run homepickle debug              # Dump favorites page HTML + screenshot
 """
 
@@ -86,21 +87,29 @@ async def _sync() -> None:
     3. Scrape detail pages for properties that need evaluation.
     4. Run LLM evaluation and cache results.
     5. Print a summary of changes.
+
+    Supports --quiet flag for cron-friendly output (only prints the summary).
     """
+    quiet = "--quiet" in sys.argv or "-q" in sys.argv
+
+    def _log(msg: str) -> None:
+        if not quiet:
+            print(msg)
+
     pw, context = await create_context()
     conn = get_connection()
     try:
         fav_lists = await get_favorite_lists(context)
-        print(f"Found {len(fav_lists)} favorite list(s).")
+        _log(f"Found {len(fav_lists)} favorite list(s).")
 
         total_new = 0
         total_removed = 0
         to_evaluate: list[Property] = []
 
         for fav_list in fav_lists:
-            print(f"\nScraping: {fav_list.name}")
+            _log(f"\nScraping: {fav_list.name}")
             properties = await scrape_properties(context, fav_list)
-            print(f"  {len(properties)} properties found.")
+            _log(f"  {len(properties)} properties found.")
 
             # Upsert all properties into DB.
             for prop in properties:
@@ -114,9 +123,9 @@ async def _sync() -> None:
             conn.commit()
 
             if new_props:
-                print(f"  {len(new_props)} new")
+                _log(f"  {len(new_props)} new")
             if removed_urls:
-                print(f"  {len(removed_urls)} removed")
+                _log(f"  {len(removed_urls)} removed")
 
             total_new += len(new_props)
             total_removed += len(removed_urls)
@@ -127,34 +136,37 @@ async def _sync() -> None:
                     to_evaluate.append(prop)
 
         if not to_evaluate:
-            print(f"\nSync complete. {total_new} new, {total_removed} removed. "
-                  "All evaluations up to date.")
+            summary = (f"Sync complete. {total_new} new, "
+                       f"{total_removed} removed. "
+                       "All evaluations up to date.")
+            print(summary) if quiet else _log(f"\n{summary}")
             return
 
-        print(f"\n{len(to_evaluate)} properties need evaluation. "
-              "Scraping detail pages...")
+        _log(f"\n{len(to_evaluate)} properties need evaluation. "
+             "Scraping detail pages...")
 
         for i, prop in enumerate(to_evaluate):
             if not prop.url:
                 continue
             label = f"{prop.address}, {prop.city}" if prop.city else prop.address
-            print(f"\n  [{i + 1}/{len(to_evaluate)}] {label}")
+            _log(f"\n  [{i + 1}/{len(to_evaluate)}] {label}")
 
-            print("    Scraping detail page...")
+            _log("    Scraping detail page...")
             page_text = await scrape_property_page(context, prop.url)
             text_hash = hashlib.sha256(page_text.encode()).hexdigest()[:16]
 
-            print("    Evaluating with Claude...")
+            _log("    Evaluating with Claude...")
             evaluation = evaluate_property(prop, page_text)
 
             save_evaluation(
                 conn, prop.url, "sonnet", evaluation, text_hash, prop.price
             )
             conn.commit()
-            print("    Done.")
+            _log("    Done.")
 
-        print(f"\nSync complete. {total_new} new, {total_removed} removed, "
-              f"{len(to_evaluate)} evaluated.")
+        summary = (f"Sync complete. {total_new} new, {total_removed} removed, "
+                   f"{len(to_evaluate)} evaluated.")
+        print(summary) if quiet else _log(f"\n{summary}")
 
     finally:
         conn.close()
@@ -239,6 +251,22 @@ def _show_report() -> None:
         conn.close()
 
 
+def _web() -> None:
+    """Start the web UI server.
+
+    Supports --port N to change the port (default 8080).
+    """
+    from homepickle.web import run_server
+
+    port = 8080
+    if "--port" in sys.argv:
+        idx = sys.argv.index("--port")
+        if idx + 1 < len(sys.argv):
+            port = int(sys.argv[idx + 1])
+
+    run_server(port=port)
+
+
 async def _debug() -> None:
     """Dump the favorites page for debugging."""
     pw, context = await create_context()
@@ -261,6 +289,7 @@ def main() -> None:
     }
     sync_commands = {
         "report": _show_report,
+        "web": _web,
     }
     all_commands = list(async_commands) + list(sync_commands)
 

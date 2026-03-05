@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Homepickle{% endblock %}
+{% block content %}
+
+<div class="stats-bar">
+    <span><strong>{{ properties|length }}</strong> properties</span>
+    <span><strong>{{ total_evaluated }}</strong> evaluated</span>
+</div>
+
+{% if lists %}
+<div class="filters">
+    <a href="/" class="{{ 'active' if not active_list else '' }}">All lists</a>
+    {% for l in lists %}
+    <a href="/?list={{ l|urlencode }}"
+       class="{{ 'active' if active_list == l else '' }}">{{ l }}</a>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if cities %}
+<div class="filters">
+    <a href="/?{{ 'list=' + active_list|urlencode if active_list else '' }}"
+       class="{{ 'active' if not active_city else '' }}">All cities</a>
+    {% for c in cities %}
+    <a href="/?city={{ c|urlencode }}{{ '&list=' + active_list|urlencode if active_list else '' }}"
+       class="{{ 'active' if active_city == c else '' }}">{{ c }}</a>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if properties %}
+<table>
+    <thead>
+        <tr>
+            <th>Address</th>
+            <th>City</th>
+            <th class="text-right">Price</th>
+            <th class="text-right">Beds</th>
+            <th class="text-right">Baths</th>
+            <th class="text-right">Sqft</th>
+            <th class="text-right">$/sqft</th>
+            <th>Evaluation</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for p in properties %}
+        <tr>
+            <td>
+                <a class="property-link"
+                   href="/property?url={{ p['url']|urlencode }}">{{ p['address'] }}</a>
+            </td>
+            <td class="text-muted">{{ p['city'] }}, {{ p['state'] }}</td>
+            <td class="text-right">{{ p['price']|currency }}</td>
+            <td class="text-right">{{ p['beds']|number }}</td>
+            <td class="text-right">{{ p['baths']|number }}</td>
+            <td class="text-right">{{ p['sqft']|number }}</td>
+            <td class="text-right">
+                {% if p['price'] and p['sqft'] %}
+                    {{ (p['price'] / p['sqft'])|currency }}
+                {% else %}-{% endif %}
+            </td>
+            <td>
+                {% if p['url'] in eval_map %}
+                    <span class="badge badge-green">Done</span>
+                {% else %}
+                    <span class="badge badge-gray">Pending</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="empty-state">
+    <h2>No properties yet</h2>
+    <p>Run <code>homepickle sync</code> to scrape favorites and generate evaluations.</p>
+</div>
+{% endif %}
+
+{% endblock %}

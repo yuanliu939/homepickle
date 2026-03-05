@@ -268,6 +268,74 @@ def get_all_properties(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     ).fetchall()
 
 
+def get_property(conn: sqlite3.Connection, url: str) -> sqlite3.Row | None:
+    """Fetch a single property by URL.
+
+    Args:
+        conn: An open database connection.
+        url: The property URL to look up.
+
+    Returns:
+        A property Row, or None if not found.
+    """
+    return conn.execute(
+        "SELECT * FROM properties WHERE url = ?", (url,)
+    ).fetchone()
+
+
+def get_favorite_list_names(conn: sqlite3.Connection) -> list[str]:
+    """Fetch all distinct favorite list names.
+
+    Args:
+        conn: An open database connection.
+
+    Returns:
+        A sorted list of list names.
+    """
+    rows = conn.execute(
+        "SELECT DISTINCT list_name FROM favorites_sync ORDER BY list_name"
+    ).fetchall()
+    return [r["list_name"] for r in rows]
+
+
+def get_properties_for_list(
+    conn: sqlite3.Connection, list_name: str
+) -> list[sqlite3.Row]:
+    """Fetch all active properties in a favorites list.
+
+    Args:
+        conn: An open database connection.
+        list_name: The favorites list name.
+
+    Returns:
+        A list of property Rows.
+    """
+    return conn.execute(
+        """\
+        SELECT p.* FROM properties p
+        JOIN favorites_sync fs ON p.url = fs.property_url
+        WHERE fs.list_name = ? AND fs.removed_at IS NULL
+        ORDER BY p.updated_at DESC
+        """,
+        (list_name,),
+    ).fetchall()
+
+
+def get_distinct_cities(conn: sqlite3.Connection) -> list[str]:
+    """Fetch all distinct cities from tracked properties.
+
+    Args:
+        conn: An open database connection.
+
+    Returns:
+        A sorted list of city names.
+    """
+    rows = conn.execute(
+        "SELECT DISTINCT city FROM properties WHERE city != '' ORDER BY city"
+    ).fetchall()
+    return [r["city"] for r in rows]
+
+
 def row_to_property(row: sqlite3.Row) -> Property:
     """Convert a database Row to a Property object.
 

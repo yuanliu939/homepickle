@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ prop['address'] if prop else 'Not Found' }} - Homepickle{% endblock %}
+{% block content %}
+
+<a class="back-link" href="/">&larr; Back to dashboard</a>
+
+{% if prop %}
+<div class="prop-header">
+    <h2>{{ prop['address'] }}</h2>
+    <div class="meta">
+        <span>{{ prop['city'] }}, {{ prop['state'] }} {{ prop['zip_code'] }}</span>
+        {% if prop['price'] %}<span><strong>{{ prop['price']|currency }}</strong></span>{% endif %}
+        {% if prop['beds'] %}<span>{{ prop['beds'] }} bed</span>{% endif %}
+        {% if prop['baths'] %}<span>{{ prop['baths']|number }} bath</span>{% endif %}
+        {% if prop['sqft'] %}<span>{{ prop['sqft']|number }} sqft</span>{% endif %}
+        {% if prop['price'] and prop['sqft'] %}
+            <span>{{ (prop['price'] / prop['sqft'])|currency }}/sqft</span>
+        {% endif %}
+        {% if prop['url'] %}
+            <span><a href="{{ prop['url'] }}" target="_blank" rel="noopener">View on Redfin</a></span>
+        {% endif %}
+    </div>
+</div>
+
+{% if evaluation %}
+<div class="eval-content">
+    {{ evaluation['evaluation_text']|render_markdown }}
+</div>
+<p class="text-muted" style="margin-top: 0.75rem; font-size: 0.8rem;">
+    Evaluated {{ evaluation['created_at'][:10] }} &middot;
+    Model: {{ evaluation['model'] }}
+    {% if evaluation['price_at_eval'] %}
+        &middot; Price at eval: {{ evaluation['price_at_eval']|currency }}
+    {% endif %}
+</p>
+{% else %}
+<div class="empty-state">
+    <h2>No evaluation yet</h2>
+    <p>Run <code>homepickle sync</code> or <code>homepickle evaluate {{ prop['url'] }}</code></p>
+</div>
+{% endif %}
+
+{% else %}
+<div class="empty-state">
+    <h2>Property not found</h2>
+    <p>The requested property URL was not found in the database.</p>
+</div>
+{% endif %}
+
+{% endblock %}
