@@ -172,6 +172,13 @@ async def _extract_properties(page: Page) -> list[Property]:
             stable_rounds = 0
             prev_count = current_count
 
+    # Scroll back through the page so lazy-loaded images render.
+    total_height = await page.evaluate("document.body.scrollHeight")
+    for offset in range(0, total_height, 800):
+        await page.evaluate(f"window.scrollTo(0, {offset})")
+        await asyncio.sleep(0.3)
+    await asyncio.sleep(1)
+
     cards = await page.query_selector_all(".bp-Homecard")
     properties: list[Property] = []
     for card in cards:
