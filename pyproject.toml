@@ -1,0 +1,31 @@
+[project]
+name = "homepickle"
+version = "0.1.0"
+description = "Analyze saved homes from Redfin and surface property insights."
+requires-python = ">=3.11"
+dependencies = [
+    "playwright>=1.40",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.4",
+]
+
+[build-system]
+requires = ["uv_build>=0.10.8,<0.11.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "D", "UP"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
