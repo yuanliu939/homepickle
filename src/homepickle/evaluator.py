@@ -1,8 +1,6 @@
-"""LLM-based property evaluation using Claude."""
+"""LLM-based property evaluation using Claude CLI."""
 
-import os
-
-import anthropic
+import subprocess
 
 from homepickle.models import Property
 
@@ -37,32 +35,60 @@ Be direct, specific, and practical. Flag real risks honestly — don't sugarcoat
 Use the actual data from the listing, not generic advice.\
 """
 
+SUMMARY_SYSTEM_PROMPT = (
+    "You are a real estate analyst. Compare the given properties and "
+    "provide a concise ranking with reasoning. Focus on value ($/sqft "
+    "relative to area), risk factors, and which properties deserve "
+    "serious consideration vs which to skip. Be direct and practical."
+)
+
+
+def _run_claude(system_prompt: str, user_message: str, model: str) -> str:
+    """Run a prompt through the Claude CLI in non-interactive mode.
+
+    Args:
+        system_prompt: System prompt for the LLM.
+        user_message: User message to send.
+        model: Claude model name (e.g. "sonnet").
+
+    Returns:
+        The text response from Claude.
+
+    Raises:
+        RuntimeError: If the claude CLI exits with an error.
+    """
+    result = subprocess.run(
+        [
+            "claude",
+            "-p",
+            "--model", model,
+            "--system-prompt", system_prompt,
+            user_message,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"claude CLI failed (exit {result.returncode}): {result.stderr}"
+        )
+    return result.stdout.strip()
+
 
 def evaluate_property(
-    prop: Property, page_text: str, model: str = "claude-sonnet-4-20250514"
+    prop: Property, page_text: str, model: str = "sonnet"
 ) -> str:
     """Send property data to Claude for detailed evaluation.
 
     Args:
         prop: The Property object with basic scraped data.
         page_text: Full text content scraped from the Redfin detail page.
-        model: Claude model ID to use.
+        model: Claude model alias or ID to use.
 
     Returns:
         The evaluation text from Claude.
-
-    Raises:
-        ValueError: If ANTHROPIC_API_KEY is not set.
     """
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise ValueError(
-            "ANTHROPIC_API_KEY environment variable is required. "
-            "Set it with: export ANTHROPIC_API_KEY=sk-..."
-        )
-
-    client = anthropic.Anthropic(api_key=api_key)
-
     user_message = (
         f"Evaluate this property:\n\n"
         f"**{prop.address}, {prop.city}, {prop.state} {prop.zip_code}**\n"
@@ -70,43 +96,24 @@ def evaluate_property(
         f"--- Redfin Listing Data ---\n{page_text}\n"
     )
 
-    message = client.messages.create(
-        model=model,
-        max_tokens=4096,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_message}],
-    )
-
-    return message.content[0].text
+    return _run_claude(SYSTEM_PROMPT, user_message, model)
 
 
 def evaluate_property_summary(
     properties: list[Property],
     page_texts: dict[str, str],
-    model: str = "claude-sonnet-4-20250514",
+    model: str = "sonnet",
 ) -> str:
     """Generate a comparative summary across multiple properties.
 
     Args:
         properties: List of Property objects to compare.
         page_texts: Dict mapping property URL to scraped page text.
-        model: Claude model ID to use.
+        model: Claude model alias or ID to use.
 
     Returns:
         A comparative analysis from Claude.
-
-    Raises:
-        ValueError: If ANTHROPIC_API_KEY is not set.
     """
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise ValueError(
-            "ANTHROPIC_API_KEY environment variable is required. "
-            "Set it with: export ANTHROPIC_API_KEY=sk-..."
-        )
-
-    client = anthropic.Anthropic(api_key=api_key)
-
     listing_summaries = []
     for p in properties:
         text = page_texts.get(p.url or "", "")
@@ -125,16 +132,4 @@ def evaluate_property_summary(
         + "\n---\n".join(listing_summaries)
     )
 
-    message = client.messages.create(
-        model=model,
-        max_tokens=4096,
-        system=(
-            "You are a real estate analyst. Compare the given properties and "
-            "provide a concise ranking with reasoning. Focus on value ($/sqft "
-            "relative to area), risk factors, and which properties deserve "
-            "serious consideration vs which to skip. Be direct and practical."
-        ),
-        messages=[{"role": "user", "content": user_message}],
-    )
-
-    return message.content[0].text
+    return _run_claude(SUMMARY_SYSTEM_PROMPT, user_message, model)
