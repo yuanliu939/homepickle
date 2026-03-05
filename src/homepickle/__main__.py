@@ -3,6 +3,7 @@
 Usage:
     uv run homepickle login     # Interactive login, saves cookies
     uv run homepickle scrape    # Scrape favorites and print JSON
+    uv run homepickle analyze   # Scrape and print analysis report
     uv run homepickle debug     # Dump favorites page HTML + screenshot
 """
 
@@ -10,6 +11,7 @@ import asyncio
 import sys
 from pathlib import Path
 
+from homepickle.analyzer import format_report
 from homepickle.browser import create_context, interactive_login
 from homepickle.scraper import (
     debug_dump,
@@ -44,6 +46,22 @@ async def _scrape() -> None:
         await pw.stop()
 
 
+async def _analyze() -> None:
+    """Scrape all favorites and print an analysis report."""
+    pw, context = await create_context()
+    try:
+        fav_lists = await get_favorite_lists(context)
+        for fav_list in fav_lists:
+            properties = await scrape_properties(context, fav_list)
+            if not properties:
+                continue
+            print(f"\n--- {fav_list.name} ---\n")
+            print(format_report(properties))
+    finally:
+        await context.browser.close()
+        await pw.stop()
+
+
 async def _debug() -> None:
     """Dump the favorites page for debugging."""
     pw, context = await create_context()
@@ -59,6 +77,7 @@ def main() -> None:
     commands = {
         "login": _login,
         "scrape": _scrape,
+        "analyze": _analyze,
         "debug": _debug,
     }
 
