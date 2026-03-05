@@ -32,6 +32,7 @@
 <table>
     <thead>
         <tr>
+            <th></th>
             <th>Address</th>
             <th>City</th>
             <th class="text-right">Price</th>
@@ -45,6 +46,16 @@
     <tbody>
         {% for p in properties %}
         <tr>
+            <td class="photo-cell">
+                {% if p['image_url'] %}
+                <a href="/property?url={{ p['url']|urlencode }}">
+                    <img class="property-thumb" src="{{ p['image_url'] }}"
+                         alt="{{ p['address'] }}" loading="lazy">
+                </a>
+                {% else %}
+                <div class="property-thumb-placeholder"></div>
+                {% endif %}
+            </td>
             <td>
                 <a class="property-link"
                    href="/property?url={{ p['url']|urlencode }}">{{ p['address'] }}</a>

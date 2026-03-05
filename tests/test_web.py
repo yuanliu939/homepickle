@@ -16,13 +16,14 @@ def _seed_db(conn: sqlite3.Connection) -> None:
         "INSERT INTO properties VALUES "
         "('https://redfin.com/1', '123 Main St', 'Seattle', 'WA', '98101', "
         "500000, 3, 2.0, 1500, NULL, NULL, NULL, NULL, "
+        "'https://ssl.cdn-redfin.com/photo/1.jpg', "
         "'2025-01-01', '2025-01-01')"
     )
     conn.execute(
         "INSERT INTO properties VALUES "
         "('https://redfin.com/2', '456 Oak Ave', 'Portland', 'OR', '97201', "
         "400000, 2, 1.0, 1200, NULL, NULL, NULL, NULL, "
-        "'2025-01-01', '2025-01-01')"
+        "NULL, '2025-01-01', '2025-01-01')"
     )
     conn.execute(
         "INSERT INTO evaluations VALUES "
@@ -115,6 +116,30 @@ def test_property_detail_without_evaluation() -> None:
         html = resp.data.decode()
         assert "456 Oak Ave" in html
         assert "No evaluation yet" in html
+
+
+def test_index_shows_property_image() -> None:
+    """Index page renders property thumbnail images."""
+    conn = _make_test_conn()
+    with patch("homepickle.web.get_connection", return_value=conn):
+        app = create_app()
+        client = app.test_client()
+        resp = client.get("/")
+        html = resp.data.decode()
+        assert "ssl.cdn-redfin.com/photo/1.jpg" in html
+        assert "property-thumb" in html
+
+
+def test_property_detail_shows_hero_image() -> None:
+    """Property detail page renders the hero image."""
+    conn = _make_test_conn()
+    with patch("homepickle.web.get_connection", return_value=conn):
+        app = create_app()
+        client = app.test_client()
+        resp = client.get("/property?url=https://redfin.com/1")
+        html = resp.data.decode()
+        assert "prop-hero" in html
+        assert "ssl.cdn-redfin.com/photo/1.jpg" in html
 
 
 def test_property_detail_not_found() -> None:

@@ -5,6 +5,11 @@
 <a class="back-link" href="/">&larr; Back to dashboard</a>
 
 {% if prop %}
+{% if prop['image_url'] %}
+<div class="prop-hero">
+    <img src="{{ prop['image_url'] }}" alt="{{ prop['address'] }}">
+</div>
+{% endif %}
 <div class="prop-header">
     <h2>{{ prop['address'] }}</h2>
     <div class="meta">

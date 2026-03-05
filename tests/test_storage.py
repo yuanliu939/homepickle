@@ -4,51 +4,13 @@ import sqlite3
 
 from homepickle.models import Property
 from homepickle.storage import (
+    _SCHEMA,
     get_latest_evaluation,
     needs_evaluation,
     save_evaluation,
     sync_favorites,
     upsert_property,
 )
-
-_SCHEMA = """\
-CREATE TABLE IF NOT EXISTS properties (
-    url             TEXT PRIMARY KEY,
-    address         TEXT NOT NULL,
-    city            TEXT NOT NULL,
-    state           TEXT NOT NULL,
-    zip_code        TEXT NOT NULL,
-    price           INTEGER,
-    beds            INTEGER,
-    baths           REAL,
-    sqft            INTEGER,
-    lot_sqft        INTEGER,
-    year_built      INTEGER,
-    days_on_market  INTEGER,
-    hoa             INTEGER,
-    created_at      TEXT NOT NULL,
-    updated_at      TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS evaluations (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    property_url    TEXT NOT NULL REFERENCES properties(url),
-    model           TEXT NOT NULL,
-    evaluation_text TEXT NOT NULL,
-    page_text_hash  TEXT NOT NULL,
-    price_at_eval   INTEGER,
-    created_at      TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS favorites_sync (
-    property_url    TEXT NOT NULL,
-    list_name       TEXT NOT NULL,
-    first_seen      TEXT NOT NULL,
-    last_seen       TEXT NOT NULL,
-    removed_at      TEXT,
-    PRIMARY KEY (property_url, list_name)
-);
-"""
 
 
 def _make_conn() -> sqlite3.Connection:

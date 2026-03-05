@@ -67,7 +67,7 @@ def _run_claude(system_prompt: str, user_message: str, model: str) -> str:
         ],
         capture_output=True,
         text=True,
-        timeout=300,
+        timeout=600,
     )
     if result.returncode != 0:
         raise RuntimeError(

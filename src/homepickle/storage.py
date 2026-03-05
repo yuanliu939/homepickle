@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS properties (
     year_built      INTEGER,
     days_on_market  INTEGER,
     hoa             INTEGER,
+    image_url       TEXT,
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL
 );
@@ -72,7 +73,23 @@ def get_connection() -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(_SCHEMA)
+    _migrate(conn)
     return conn
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Apply schema migrations for existing databases.
+
+    Args:
+        conn: An open database connection.
+    """
+    # Add image_url column if missing (added in v0.2).
+    columns = {
+        r[1] for r in conn.execute("PRAGMA table_info(properties)").fetchall()
+    }
+    if "image_url" not in columns:
+        conn.execute("ALTER TABLE properties ADD COLUMN image_url TEXT")
+        conn.commit()
 
 
 def upsert_property(conn: sqlite3.Connection, prop: Property) -> None:
@@ -89,19 +106,22 @@ def upsert_property(conn: sqlite3.Connection, prop: Property) -> None:
         """\
         INSERT INTO properties
             (url, address, city, state, zip_code, price, beds, baths, sqft,
-             lot_sqft, year_built, days_on_market, hoa, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             lot_sqft, year_built, days_on_market, hoa, image_url,
+             created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(url) DO UPDATE SET
             address=excluded.address, city=excluded.city, state=excluded.state,
             zip_code=excluded.zip_code, price=excluded.price, beds=excluded.beds,
             baths=excluded.baths, sqft=excluded.sqft, lot_sqft=excluded.lot_sqft,
             year_built=excluded.year_built, days_on_market=excluded.days_on_market,
-            hoa=excluded.hoa, updated_at=excluded.updated_at
+            hoa=excluded.hoa, image_url=COALESCE(excluded.image_url, image_url),
+            updated_at=excluded.updated_at
         """,
         (
             prop.url, prop.address, prop.city, prop.state, prop.zip_code,
             prop.price, prop.beds, prop.baths, prop.sqft, prop.lot_sqft,
-            prop.year_built, prop.days_on_market, prop.hoa, now, now,
+            prop.year_built, prop.days_on_market, prop.hoa, prop.image_url,
+            now, now,
         ),
     )
 
@@ -359,4 +379,5 @@ def row_to_property(row: sqlite3.Row) -> Property:
         days_on_market=row["days_on_market"],
         hoa=row["hoa"],
         url=row["url"],
+        image_url=row["image_url"],
     )

@@ -237,6 +237,9 @@ async def _parse_property_card(card) -> Property | None:
             else href
         )
 
+        img_el = await card.query_selector("img.homecard-image")
+        image_url = await img_el.get_attribute("src") if img_el else None
+
         return Property(
             address=address,
             city=city,
@@ -247,6 +250,7 @@ async def _parse_property_card(card) -> Property | None:
             baths=baths,
             sqft=sqft,
             url=url,
+            image_url=image_url,
         )
     except Exception:
         return None
