@@ -34,8 +34,9 @@ class Property:
 
 
 @dataclass
-class SavedSearch:
-    """A saved search from Redfin containing multiple properties."""
+class FavoriteList:
+    """A favorites list from Redfin containing saved homes."""
 
     name: str
+    url: str | None = None
     properties: list[Property] = field(default_factory=list)

@@ -12,3 +12,4 @@ dist/
 
 # Generated examples
 examples/*.structured.json
+examples/debug/

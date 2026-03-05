@@ -7,6 +7,9 @@ dependencies = [
     "playwright>=1.40",
 ]
 
+[project.scripts]
+homepickle = "homepickle.__main__:main"
+
 [dependency-groups]
 dev = [
     "pytest>=7.0",

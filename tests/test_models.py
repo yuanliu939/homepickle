@@ -1,6 +1,6 @@
 """Tests for property data models."""
 
-from homepickle.models import Property, SavedSearch
+from homepickle.models import FavoriteList, Property
 
 
 def test_price_per_sqft() -> None:
@@ -30,7 +30,8 @@ def test_price_per_sqft_missing_sqft() -> None:
     assert prop.price_per_sqft is None
 
 
-def test_saved_search_defaults_empty() -> None:
-    """A new SavedSearch has an empty properties list."""
-    search = SavedSearch(name="Test Search")
-    assert search.properties == []
+def test_favorite_list_defaults_empty() -> None:
+    """A new FavoriteList has an empty properties list."""
+    fav = FavoriteList(name="My Homes")
+    assert fav.properties == []
+    assert fav.url is None
