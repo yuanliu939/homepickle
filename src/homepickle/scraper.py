@@ -252,6 +252,42 @@ async def _parse_property_card(card) -> Property | None:
         return None
 
 
+async def scrape_property_page(
+    context: BrowserContext, url: str
+) -> str:
+    """Scrape the full text content of a Redfin property detail page.
+
+    Navigates to the property URL, scrolls to load all sections, and
+    returns the page text with scripts/styles removed.
+
+    Args:
+        context: An authenticated browser context.
+        url: Full Redfin property URL.
+
+    Returns:
+        The page text content as a string.
+    """
+    page = await context.new_page()
+    await page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+    await asyncio.sleep(5)
+
+    # Scroll to load lazy sections (climate, tax, etc.).
+    for _ in range(5):
+        await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+        await asyncio.sleep(2)
+
+    text = await page.evaluate("""() => {
+        const clone = document.body.cloneNode(true);
+        clone.querySelectorAll(
+            'script, style, nav, header, footer, iframe'
+        ).forEach(el => el.remove());
+        return clone.innerText;
+    }""")
+
+    await page.close()
+    return text
+
+
 def _parse_address(raw: str) -> tuple[str, str, str, str]:
     """Parse a Redfin address string into components.
 
