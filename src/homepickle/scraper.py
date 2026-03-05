@@ -146,7 +146,10 @@ async def _click_list_card(page: Page, list_name: str) -> bool:
 
 
 async def _extract_properties(page: Page) -> list[Property]:
-    """Extract property data from home cards on the current page.
+    """Extract property data from home cards, scrolling to load all results.
+
+    Redfin lazy-loads home cards as the user scrolls. This function scrolls
+    to the bottom of the page repeatedly until no new cards appear.
 
     Args:
         page: A page showing a list of home cards.
@@ -154,10 +157,23 @@ async def _extract_properties(page: Page) -> list[Property]:
     Returns:
         A list of Property objects.
     """
-    properties: list[Property] = []
+    # Scroll until all cards are loaded.
+    prev_count = 0
+    stable_rounds = 0
+    while stable_rounds < 3:
+        await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+        await asyncio.sleep(2)
+        current_count = await page.evaluate(
+            "document.querySelectorAll('.bp-Homecard').length"
+        )
+        if current_count == prev_count:
+            stable_rounds += 1
+        else:
+            stable_rounds = 0
+            prev_count = current_count
 
     cards = await page.query_selector_all(".bp-Homecard")
-
+    properties: list[Property] = []
     for card in cards:
         prop = await _parse_property_card(card)
         if prop:
