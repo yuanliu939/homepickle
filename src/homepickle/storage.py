@@ -318,6 +318,21 @@ def get_latest_personalized_evaluation(
     ).fetchone()
 
 
+def delete_personalized_evaluations(
+    conn: sqlite3.Connection, property_url: str
+) -> None:
+    """Delete all personalized evaluations for a property.
+
+    Args:
+        conn: An open database connection.
+        property_url: The property URL to clear.
+    """
+    conn.execute(
+        "DELETE FROM personalized_evaluations WHERE property_url = ?",
+        (property_url,),
+    )
+
+
 def needs_personalized_evaluation(
     conn: sqlite3.Connection,
     property_url: str,

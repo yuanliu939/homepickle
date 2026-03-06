@@ -6,6 +6,7 @@ from flask import Flask, jsonify, render_template, request
 from markupsafe import Markup
 
 from homepickle.storage import (
+    delete_personalized_evaluations,
     get_all_evaluations,
     get_all_personalized_evaluations,
     get_all_properties,
@@ -366,6 +367,7 @@ def create_app() -> Flask:
 
         conn = get_connection()
         try:
+            delete_personalized_evaluations(conn, url)
             request_regeneration(conn, url)
             return jsonify({"ok": True})
         finally:

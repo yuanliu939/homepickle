@@ -157,6 +157,11 @@ document.addEventListener('click', function(e) {
             btn.textContent = '\u2713';
             btn.className = 'regen-btn done';
             btn.title = 'Queued for regeneration';
+            // Update eval badge to "Base" since personalized was deleted.
+            var td = btn.closest('tr').querySelector('td:nth-last-child(2)');
+            if (td) {
+                td.innerHTML = '<span class="badge badge-blue">Base</span>';
+            }
         } else {
             btn.textContent = '\u21bb';
             btn.disabled = false;
