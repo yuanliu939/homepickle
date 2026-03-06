@@ -37,6 +37,23 @@ from homepickle.storage import (
 )
 
 
+async def _cleanup(pw, context) -> None:
+    """Safely close browser and Playwright, ignoring errors.
+
+    Args:
+        pw: Playwright instance.
+        context: Browser context.
+    """
+    try:
+        await asyncio.wait_for(context.browser.close(), timeout=5)
+    except Exception:
+        pass
+    try:
+        await asyncio.wait_for(pw.stop(), timeout=5)
+    except Exception:
+        pass
+
+
 async def _login() -> None:
     """Run the interactive login flow."""
     await interactive_login()
@@ -58,8 +75,7 @@ async def _scrape() -> None:
             if properties:
                 print(properties_to_json(properties))
     finally:
-        await context.browser.close()
-        await pw.stop()
+        await _cleanup(pw, context)
 
 
 async def _analyze() -> None:
@@ -74,8 +90,7 @@ async def _analyze() -> None:
             print(f"\n--- {fav_list.name} ---\n")
             print(format_report(properties))
     finally:
-        await context.browser.close()
-        await pw.stop()
+        await _cleanup(pw, context)
 
 
 async def _sync() -> None:
@@ -189,8 +204,7 @@ async def _evaluate() -> None:
             await _evaluate_single(context, conn, url_arg)
         finally:
             conn.close()
-            await context.browser.close()
-            await pw.stop()
+            await _cleanup(pw, context)
     else:
         print("Use 'homepickle evaluate <url>' for a single property,")
         print("or 'homepickle sync' to evaluate all new/changed favorites.")
@@ -273,8 +287,7 @@ async def _debug() -> None:
     try:
         await debug_dump(context, Path("examples/debug"))
     finally:
-        await context.browser.close()
-        await pw.stop()
+        await _cleanup(pw, context)
 
 
 def main() -> None:
@@ -298,10 +311,14 @@ def main() -> None:
         sys.exit(1)
 
     cmd = sys.argv[1]
-    if cmd in sync_commands:
-        sync_commands[cmd]()
-    else:
-        asyncio.run(async_commands[cmd]())
+    try:
+        if cmd in sync_commands:
+            sync_commands[cmd]()
+        else:
+            asyncio.run(async_commands[cmd]())
+    except KeyboardInterrupt:
+        print("\nInterrupted.")
+        sys.exit(130)
 
 
 if __name__ == "__main__":
