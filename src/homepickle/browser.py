@@ -108,6 +108,20 @@ async def create_context() -> tuple[Playwright, BrowserContext]:
     return pw, context
 
 
+async def refresh_cookies(context: BrowserContext) -> None:
+    """Save the current browser cookies back to disk.
+
+    Calling this after a successful authenticated page load keeps
+    the session alive between daemon cycles.
+
+    Args:
+        context: An authenticated browser context.
+    """
+    cookies = await context.cookies()
+    if cookies:
+        _save_cookies(cookies)
+
+
 def _save_cookies(cookies: list[dict]) -> None:
     """Write cookies to disk.
 

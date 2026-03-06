@@ -5,7 +5,7 @@ import hashlib
 import logging
 import signal
 
-from homepickle.browser import create_context
+from homepickle.browser import create_context, refresh_cookies
 from homepickle.evaluator import (
     DEFAULT_MODEL,
     evaluate_property,
@@ -13,6 +13,7 @@ from homepickle.evaluator import (
 )
 from homepickle.models import Property
 from homepickle.scraper import (
+    SessionExpiredError,
     get_favorite_lists,
     scrape_properties,
     scrape_property_page,
@@ -130,6 +131,15 @@ async def _run_sync_cycle() -> str:
     try:
         fav_lists = await get_favorite_lists(context)
         log.info("Found %d favorite list(s).", len(fav_lists))
+
+        if not fav_lists:
+            log.warning(
+                "No favorite lists found. This may indicate a session "
+                "issue. Check that your Redfin login is still valid."
+            )
+
+        # Refresh cookies after successful auth to extend session life.
+        await refresh_cookies(context)
 
         total_new = 0
         total_removed = 0
@@ -260,6 +270,12 @@ async def run_daemon(interval_minutes: int = 60) -> None:
         try:
             summary = await _run_sync_cycle()
             log.info(summary)
+        except SessionExpiredError:
+            log.error(
+                "Redfin session expired. Run 'homepickle login' to "
+                "re-authenticate, then restart the daemon."
+            )
+            break
         except Exception:
             log.exception("Sync cycle failed.")
 

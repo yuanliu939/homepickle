@@ -13,6 +13,10 @@ from homepickle.models import FavoriteList, Property
 FAVORITES_URL = "https://www.redfin.com/myredfin/favorites"
 
 
+class SessionExpiredError(Exception):
+    """Raised when the Redfin session has expired and login is required."""
+
+
 async def get_favorite_lists(context: BrowserContext) -> list[FavoriteList]:
     """Fetch all favorite lists from the user's Redfin account.
 
@@ -24,10 +28,23 @@ async def get_favorite_lists(context: BrowserContext) -> list[FavoriteList]:
 
     Returns:
         A list of FavoriteList objects with name populated.
+
+    Raises:
+        SessionExpiredError: If redirected away from the favorites page
+            (typically to a login page).
     """
     page = await context.new_page()
     await page.goto(FAVORITES_URL, wait_until="domcontentloaded", timeout=60_000)
     await asyncio.sleep(5)
+
+    # Check that we're still on the favorites page (not redirected to login).
+    current_url = page.url
+    if "/login" in current_url or "/signup" in current_url:
+        await page.close()
+        raise SessionExpiredError(
+            "Redirected to login page. Session may have expired. "
+            "Run 'homepickle login' to re-authenticate."
+        )
 
     lists: list[FavoriteList] = []
     cards = await page.query_selector_all(
