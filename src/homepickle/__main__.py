@@ -7,7 +7,8 @@ Usage:
     uv run homepickle sync [--quiet]     # Scrape, diff, evaluate new/changed, cache
     uv run homepickle evaluate [url]     # LLM evaluation (one URL or all cached)
     uv run homepickle report             # Show all cached evaluations
-    uv run homepickle web [--port N]     # Start the web UI
+    uv run homepickle daemon [--interval N] # Continuous sync (default 60m)
+    uv run homepickle web [--host ADDR] [--port N]  # Start the web UI
     uv run homepickle debug              # Dump favorites page HTML + screenshot
 """
 
@@ -268,17 +269,47 @@ def _show_report() -> None:
 def _web() -> None:
     """Start the web UI server.
 
-    Supports --port N to change the port (default 8080).
+    Supports --host ADDR to change the bind address (default 127.0.0.1)
+    and --port N to change the port (default 8080).
     """
     from homepickle.web import run_server
 
+    host = "127.0.0.1"
     port = 8080
+    if "--host" in sys.argv:
+        idx = sys.argv.index("--host")
+        if idx + 1 < len(sys.argv):
+            host = sys.argv[idx + 1]
     if "--port" in sys.argv:
         idx = sys.argv.index("--port")
         if idx + 1 < len(sys.argv):
             port = int(sys.argv[idx + 1])
 
-    run_server(port=port)
+    run_server(host=host, port=port)
+
+
+async def _daemon() -> None:
+    """Run the continuously polling sync daemon.
+
+    Supports --interval N to set minutes between cycles (default 60).
+    """
+    import logging
+
+    from homepickle.daemon import run_daemon
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(name)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    interval = 60
+    if "--interval" in sys.argv:
+        idx = sys.argv.index("--interval")
+        if idx + 1 < len(sys.argv):
+            interval = int(sys.argv[idx + 1])
+
+    await run_daemon(interval_minutes=interval)
 
 
 async def _debug() -> None:
@@ -298,6 +329,7 @@ def main() -> None:
         "analyze": _analyze,
         "sync": _sync,
         "evaluate": _evaluate,
+        "daemon": _daemon,
         "debug": _debug,
     }
     sync_commands = {

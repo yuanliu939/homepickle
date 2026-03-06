@@ -35,6 +35,18 @@ def _inline(text: str) -> str:
     return text
 
 
+def _is_sold(status: str | None) -> bool:
+    """Check if a property status indicates it has been sold.
+
+    Args:
+        status: Listing status text, or None.
+
+    Returns:
+        True if the status contains 'SOLD'.
+    """
+    return bool(status and "SOLD" in status.upper())
+
+
 _STATUS_ORDER = {
     "ACTIVE": 0,
     "COMING SOON": 1,
@@ -246,6 +258,10 @@ def create_app() -> Flask:
 
             properties = _sort_properties(list(properties), sort, order)
 
+            # Split into active and sold.
+            active_properties = [p for p in properties if not _is_sold(p["status"])]
+            sold_properties = [p for p in properties if _is_sold(p["status"])]
+
             # Build evaluation lookup.
             all_evals = get_all_evaluations(conn)
             eval_map = {r["property_url"]: r for r in all_evals}
@@ -256,6 +272,8 @@ def create_app() -> Flask:
             return render_template(
                 "index.html",
                 properties=properties,
+                active_properties=active_properties,
+                sold_properties=sold_properties,
                 eval_map=eval_map,
                 lists=lists,
                 cities=cities,

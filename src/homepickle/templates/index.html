@@ -37,66 +37,92 @@
        href="/?sort={{ col }}&order={{ next_order }}{{ '&list=' + active_list|urlencode if active_list else '' }}{{ '&city=' + active_city|urlencode if active_city else '' }}">{{ label }}{{ arrow|safe }}</a>
 </th>
 {% endmacro %}
+
+{% macro property_row(p, sold=False) %}
+<tr class="{{ 'sold-row' if sold else '' }}">
+    <td class="photo-cell">
+        {% if p['image_url'] %}
+        <a href="/property?url={{ p['url']|urlencode }}">
+            <img class="property-thumb" src="{{ p['image_url'] }}"
+                 alt="{{ p['address'] }}" loading="lazy">
+        </a>
+        {% else %}
+        <div class="property-thumb-placeholder"></div>
+        {% endif %}
+    </td>
+    <td>
+        <a class="property-link"
+           href="/property?url={{ p['url']|urlencode }}">{{ p['address'] }}</a>
+    </td>
+    <td class="text-muted">{{ p['city'] }}, {{ p['state'] }}</td>
+    <td class="text-right">{{ p['price']|currency }}</td>
+    <td class="text-right">{{ p['beds']|number }}</td>
+    <td class="text-right">{{ p['baths']|number }}</td>
+    <td class="text-right">{{ p['sqft']|number }}</td>
+    <td class="text-right">
+        {% if p['price'] and p['sqft'] %}
+            {{ (p['price'] / p['sqft'])|currency }}
+        {% else %}-{% endif %}
+    </td>
+    <td>
+        {% if p['status'] %}
+            <span class="badge {{ p['status']|status_badge_class }}">{{ p['status'] }}</span>
+        {% else %}
+            <span class="badge badge-green">Active</span>
+        {% endif %}
+    </td>
+    <td>
+        {% if p['url'] in eval_map %}
+            <span class="badge badge-green">Done</span>
+        {% else %}
+            <span class="badge badge-gray">Pending</span>
+        {% endif %}
+    </td>
+</tr>
+{% endmacro %}
+
+{% macro table_head() %}
+<thead>
+    <tr>
+        <th></th>
+        {{ sort_link('address', 'Address') }}
+        {{ sort_link('city', 'City') }}
+        {{ sort_link('price', 'Price', right=True) }}
+        <th class="text-right">Beds</th>
+        <th class="text-right">Baths</th>
+        {{ sort_link('sqft', 'Sqft', right=True) }}
+        {{ sort_link('ppsf', '$/sqft', right=True) }}
+        {{ sort_link('status', 'Status') }}
+        <th>Evaluation</th>
+    </tr>
+</thead>
+{% endmacro %}
+
+{% if active_properties %}
 <table>
-    <thead>
-        <tr>
-            <th></th>
-            {{ sort_link('address', 'Address') }}
-            {{ sort_link('city', 'City') }}
-            {{ sort_link('price', 'Price', right=True) }}
-            <th class="text-right">Beds</th>
-            <th class="text-right">Baths</th>
-            {{ sort_link('sqft', 'Sqft', right=True) }}
-            {{ sort_link('ppsf', '$/sqft', right=True) }}
-            {{ sort_link('status', 'Status') }}
-            <th>Evaluation</th>
-        </tr>
-    </thead>
+    {{ table_head() }}
     <tbody>
-        {% for p in properties %}
-        <tr>
-            <td class="photo-cell">
-                {% if p['image_url'] %}
-                <a href="/property?url={{ p['url']|urlencode }}">
-                    <img class="property-thumb" src="{{ p['image_url'] }}"
-                         alt="{{ p['address'] }}" loading="lazy">
-                </a>
-                {% else %}
-                <div class="property-thumb-placeholder"></div>
-                {% endif %}
-            </td>
-            <td>
-                <a class="property-link"
-                   href="/property?url={{ p['url']|urlencode }}">{{ p['address'] }}</a>
-            </td>
-            <td class="text-muted">{{ p['city'] }}, {{ p['state'] }}</td>
-            <td class="text-right">{{ p['price']|currency }}</td>
-            <td class="text-right">{{ p['beds']|number }}</td>
-            <td class="text-right">{{ p['baths']|number }}</td>
-            <td class="text-right">{{ p['sqft']|number }}</td>
-            <td class="text-right">
-                {% if p['price'] and p['sqft'] %}
-                    {{ (p['price'] / p['sqft'])|currency }}
-                {% else %}-{% endif %}
-            </td>
-            <td>
-                {% if p['status'] %}
-                    <span class="badge {{ p['status']|status_badge_class }}">{{ p['status'] }}</span>
-                {% else %}
-                    <span class="badge badge-green">Active</span>
-                {% endif %}
-            </td>
-            <td>
-                {% if p['url'] in eval_map %}
-                    <span class="badge badge-green">Done</span>
-                {% else %}
-                    <span class="badge badge-gray">Pending</span>
-                {% endif %}
-            </td>
-        </tr>
+        {% for p in active_properties %}
+            {{ property_row(p) }}
         {% endfor %}
     </tbody>
 </table>
+{% endif %}
+
+{% if sold_properties %}
+<details class="sold-section">
+    <summary>Sold properties ({{ sold_properties|length }})</summary>
+    <table>
+        {{ table_head() }}
+        <tbody>
+            {% for p in sold_properties %}
+                {{ property_row(p, sold=True) }}
+            {% endfor %}
+        </tbody>
+    </table>
+</details>
+{% endif %}
+
 {% else %}
 <div class="empty-state">
     <h2>No properties yet</h2>

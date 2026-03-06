@@ -192,6 +192,25 @@
             font-size: 0.9rem;
         }
         .back-link:hover { text-decoration: underline; }
+        .sold-section summary {
+            cursor: pointer;
+            font-size: 0.9rem;
+            color: var(--muted);
+            margin: 1.5rem 0 0.75rem;
+            list-style: none;
+        }
+        .sold-section summary::-webkit-details-marker { display: none; }
+        .sold-section summary::before {
+            content: "\25b6";
+            display: inline-block;
+            margin-right: 0.4rem;
+            font-size: 0.7rem;
+            transition: transform 0.15s;
+        }
+        .sold-section[open] summary::before { transform: rotate(90deg); }
+        .sold-section table { margin-top: 0.5rem; }
+        .sold-row td { opacity: 0.55; }
+        .sold-row:hover td { opacity: 0.85; }
         .empty-state {
             text-align: center;
             padding: 3rem 1rem;
