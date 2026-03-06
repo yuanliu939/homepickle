@@ -1,6 +1,5 @@
 """LLM-based property evaluation using Claude CLI."""
 
-import signal
 import subprocess
 
 from homepickle.models import Property
@@ -58,7 +57,7 @@ def _run_claude(system_prompt: str, user_message: str, model: str) -> str:
     Raises:
         RuntimeError: If the claude CLI exits with an error.
     """
-    proc = subprocess.Popen(
+    result = subprocess.run(
         [
             "claude",
             "-p",
@@ -66,21 +65,15 @@ def _run_claude(system_prompt: str, user_message: str, model: str) -> str:
             "--system-prompt", system_prompt,
             user_message,
         ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         text=True,
+        timeout=600,
     )
-    try:
-        stdout, stderr = proc.communicate(timeout=600)
-    except KeyboardInterrupt:
-        proc.send_signal(signal.SIGTERM)
-        proc.wait(timeout=5)
-        raise
-    if proc.returncode != 0:
+    if result.returncode != 0:
         raise RuntimeError(
-            f"claude CLI failed (exit {proc.returncode}): {stderr}"
+            f"claude CLI failed (exit {result.returncode}): {result.stderr}"
         )
-    return stdout.strip()
+    return result.stdout.strip()
 
 
 def evaluate_property(

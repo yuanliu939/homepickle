@@ -13,8 +13,6 @@ Usage:
 
 import asyncio
 import hashlib
-import os
-import signal
 import sys
 from pathlib import Path
 
@@ -312,34 +310,11 @@ def main() -> None:
         print(f"Usage: homepickle <{'|'.join(all_commands)}>")
         sys.exit(1)
 
-    # Install a signal handler that exits immediately on Ctrl+C.
-    # Playwright's async operations swallow KeyboardInterrupt inside the
-    # event loop, so the default Python handler never fires. Using os._exit
-    # bypasses all that and terminates the process immediately.
-    _interrupted = False
-
-    def _handle_sigint(signum: int, frame: object) -> None:
-        nonlocal _interrupted
-        if _interrupted:
-            # Second Ctrl+C: force exit immediately.
-            os._exit(130)
-        _interrupted = True
-        print("\nInterrupted. Press Ctrl+C again to force quit.")
-        # Restore default handler so a second SIGINT kills the process
-        # even if this handler doesn't run again.
-        signal.signal(signal.SIGINT, signal.SIG_DFL)
-
-    signal.signal(signal.SIGINT, _handle_sigint)
-
     cmd = sys.argv[1]
-    try:
-        if cmd in sync_commands:
-            sync_commands[cmd]()
-        else:
-            asyncio.run(async_commands[cmd]())
-    except KeyboardInterrupt:
-        print("\nInterrupted.")
-        sys.exit(130)
+    if cmd in sync_commands:
+        sync_commands[cmd]()
+    else:
+        asyncio.run(async_commands[cmd]())
 
 
 if __name__ == "__main__":
