@@ -35,6 +35,26 @@ Be direct, specific, and practical. Flag real risks honestly — don't sugarcoat
 Use the actual data from the listing, not generic advice.\
 """
 
+PERSONALIZED_ADDENDUM = """\
+
+The buyer has provided the following profile. Tailor your evaluation to \
+their specific situation.
+
+Add these additional sections AFTER the standard sections:
+
+## Commute Analysis
+Analyze realistic commute options from this property to the buyer's \
+workplace. Consider driving (with traffic), public transit (BART, Caltrain, \
+bus), and park-and-ride options. Estimate commute times for typical rush \
+hour. Mention specific stations, routes, and parking availability. Be \
+concrete — name the nearest transit stops and realistic door-to-door times.
+
+## Personal Fit
+How well does this property match the buyer's stated preferences and \
+concerns? Call out specific matches and mismatches. Be honest about \
+dealbreakers.\
+"""
+
 SUMMARY_SYSTEM_PROMPT = (
     "You are a real estate analyst. Compare the given properties and "
     "provide a concise ranking with reasoning. Focus on value ($/sqft "
@@ -77,18 +97,30 @@ def _run_claude(system_prompt: str, user_message: str, model: str) -> str:
 
 
 def evaluate_property(
-    prop: Property, page_text: str, model: str = "sonnet"
+    prop: Property,
+    page_text: str,
+    model: str = "sonnet",
+    profile: str | None = None,
 ) -> str:
     """Send property data to Claude for detailed evaluation.
+
+    If a buyer profile is provided, the evaluation includes personalized
+    commute analysis and personal fit sections.
 
     Args:
         prop: The Property object with basic scraped data.
         page_text: Full text content scraped from the Redfin detail page.
         model: Claude model alias or ID to use.
+        profile: Optional free-text buyer profile describing preferences,
+            commute needs, concerns, etc.
 
     Returns:
         The evaluation text from Claude.
     """
+    system_prompt = SYSTEM_PROMPT
+    if profile:
+        system_prompt += PERSONALIZED_ADDENDUM
+
     user_message = (
         f"Evaluate this property:\n\n"
         f"**{prop.address}, {prop.city}, {prop.state} {prop.zip_code}**\n"
@@ -96,7 +128,10 @@ def evaluate_property(
         f"--- Redfin Listing Data ---\n{page_text}\n"
     )
 
-    return _run_claude(SYSTEM_PROMPT, user_message, model)
+    if profile:
+        user_message += f"\n--- Buyer Profile ---\n{profile}\n"
+
+    return _run_claude(system_prompt, user_message, model)
 
 
 def evaluate_property_summary(

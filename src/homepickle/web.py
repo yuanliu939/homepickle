@@ -2,7 +2,7 @@
 
 import re
 
-from flask import Flask, render_template, request
+from flask import Flask, jsonify, render_template, request
 from markupsafe import Markup
 
 from homepickle.storage import (
@@ -12,8 +12,10 @@ from homepickle.storage import (
     get_distinct_cities,
     get_favorite_list_names,
     get_latest_evaluation,
+    get_profile,
     get_properties_for_list,
     get_property,
+    save_profile,
 )
 
 
@@ -303,6 +305,35 @@ def create_app() -> Flask:
                 prop=prop,
                 evaluation=evaluation,
             )
+        finally:
+            conn.close()
+
+    @app.route("/profile")
+    def profile() -> str:
+        """Render the buyer profile editor.
+
+        Returns:
+            Rendered profile page.
+        """
+        conn = get_connection()
+        try:
+            row = get_profile(conn)
+            return render_template("profile.html", profile=row)
+        finally:
+            conn.close()
+
+    @app.route("/profile/save", methods=["POST"])
+    def profile_save() -> str:
+        """Save the buyer profile (called by auto-save JS).
+
+        Returns:
+            JSON response with save status.
+        """
+        conn = get_connection()
+        try:
+            data = request.get_json()
+            save_profile(conn, data.get("preferences", ""))
+            return jsonify({"ok": True})
         finally:
             conn.close()
 

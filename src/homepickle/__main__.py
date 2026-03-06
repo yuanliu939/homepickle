@@ -31,6 +31,7 @@ from homepickle.scraper import (
 from homepickle.storage import (
     get_all_evaluations,
     get_connection,
+    get_profile,
     needs_evaluation,
     save_evaluation,
     sync_favorites,
@@ -161,6 +162,10 @@ async def _sync() -> None:
         _log(f"\n{len(to_evaluate)} properties need evaluation. "
              "Scraping detail pages...")
 
+        # Load buyer profile for personalized evaluation.
+        profile_row = get_profile(conn)
+        profile = profile_row["preferences"] if profile_row else None
+
         for i, prop in enumerate(to_evaluate):
             if not prop.url:
                 continue
@@ -172,7 +177,7 @@ async def _sync() -> None:
             text_hash = hashlib.sha256(page_text.encode()).hexdigest()[:16]
 
             _log("    Evaluating with Claude...")
-            evaluation = evaluate_property(prop, page_text)
+            evaluation = evaluate_property(prop, page_text, profile=profile)
 
             save_evaluation(
                 conn, prop.url, "sonnet", evaluation, text_hash, prop.price
@@ -236,8 +241,12 @@ async def _evaluate_single(context, conn, url: str) -> None:
     prop = Property(address=url, city="", state="", zip_code="", url=url)
     upsert_property(conn, prop)
 
+    # Load buyer profile for personalized evaluation.
+    profile_row = get_profile(conn)
+    profile = profile_row["preferences"] if profile_row else None
+
     print("\nAsking Claude for evaluation...\n")
-    result = evaluate_property(prop, page_text)
+    result = evaluate_property(prop, page_text, profile=profile)
     print(result)
 
     save_evaluation(conn, url, "sonnet", result, text_hash, prop.price)

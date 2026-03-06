@@ -6,8 +6,10 @@ from homepickle.models import Property
 from homepickle.storage import (
     _SCHEMA,
     get_latest_evaluation,
+    get_profile,
     needs_evaluation,
     save_evaluation,
+    save_profile,
     sync_favorites,
     upsert_property,
 )
@@ -205,3 +207,29 @@ def test_needs_evaluation_price_changed() -> None:
     conn.commit()
 
     assert needs_evaluation(conn, prop.url, 475_000) is True
+
+
+def test_profile_empty() -> None:
+    """Returns None when no profile exists."""
+    conn = _make_conn()
+    assert get_profile(conn) is None
+
+
+def test_save_and_get_profile() -> None:
+    """Saving a profile and retrieving it works."""
+    conn = _make_conn()
+    save_profile(conn, "3+ beds, near BART, work at 500 Howard St SF")
+    row = get_profile(conn)
+    assert row is not None
+    assert "500 Howard St" in row["preferences"]
+
+
+def test_save_profile_upsert() -> None:
+    """Saving a profile twice updates rather than duplicates."""
+    conn = _make_conn()
+    save_profile(conn, "pref1")
+    save_profile(conn, "pref2")
+    row = get_profile(conn)
+    assert row["preferences"] == "pref2"
+    count = conn.execute("SELECT COUNT(*) FROM user_profile").fetchone()[0]
+    assert count == 1

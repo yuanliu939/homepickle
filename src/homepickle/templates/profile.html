@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Buyer Profile - Homepickle{% endblock %}
+{% block content %}
+
+<div class="profile-card">
+    <h2>Buyer Profile</h2>
+    <p class="text-muted" style="margin-bottom:0.5rem; font-size:0.85rem;">
+        Describe your situation, preferences, and concerns in your own words.
+        This text is included in every AI property evaluation to personalize
+        the analysis. Auto-saves as you type.
+    </p>
+    <p id="save-status" class="text-muted" style="font-size:0.8rem; margin-bottom:1rem; min-height:1.2em;"></p>
+
+    <div class="form-group">
+        <textarea id="preferences" name="preferences"
+                  >{{ profile['preferences'] if profile else '' }}</textarea>
+    </div>
+</div>
+
+<div class="profile-card" style="margin-top:1rem;">
+    <h2 style="font-size:1rem; margin-bottom:0.5rem;">Suggestions for your profile</h2>
+    <p class="text-muted" style="font-size:0.85rem; margin-bottom:0.75rem;">
+        Include anything that matters to you. Here are some ideas:
+    </p>
+    <ul class="suggestion-list">
+        <li><strong>Workplace address</strong> &mdash; for commute analysis (e.g. "I work at 500 Howard Street, San Francisco, CA 94105")</li>
+        <li><strong>Current address</strong> &mdash; where you live now, for context</li>
+        <li><strong>Commute preferences</strong> &mdash; max commute time, preferred modes (BART, Caltrain, driving), tolerance for transfers</li>
+        <li><strong>Budget &amp; financing</strong> &mdash; price range, down payment %, loan type</li>
+        <li><strong>Size requirements</strong> &mdash; min bedrooms, bathrooms, square footage, garage, yard</li>
+        <li><strong>Location preferences</strong> &mdash; preferred neighborhoods, proximity to amenities, walkability</li>
+        <li><strong>School requirements</strong> &mdash; school district quality, specific schools, grade levels</li>
+        <li><strong>Risk concerns</strong> &mdash; fire zone, flood zone, earthquake, insurance costs</li>
+        <li><strong>Lifestyle</strong> &mdash; quiet neighborhood, near parks/trails, pet-friendly, HOA tolerance</li>
+        <li><strong>Property condition</strong> &mdash; move-in ready vs. renovation OK, age preferences</li>
+        <li><strong>Dealbreakers</strong> &mdash; anything that's an absolute no-go</li>
+    </ul>
+</div>
+
+<script>
+(function() {
+    var textarea = document.getElementById('preferences');
+    var status = document.getElementById('save-status');
+    var timer = null;
+    var lastSaved = textarea.value;
+
+    function save() {
+        var text = textarea.value;
+        if (text === lastSaved) return;
+        status.textContent = 'Saving...';
+        fetch('/profile/save', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({preferences: text})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.ok) {
+                lastSaved = text;
+                status.textContent = 'Saved.';
+                setTimeout(function() {
+                    if (status.textContent === 'Saved.') status.textContent = '';
+                }, 2000);
+            }
+        })
+        .catch(function() { status.textContent = 'Save failed.'; });
+    }
+
+    textarea.addEventListener('input', function() {
+        clearTimeout(timer);
+        timer = setTimeout(save, 1000);
+    });
+})();
+</script>
+
+{% endblock %}

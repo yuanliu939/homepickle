@@ -192,6 +192,42 @@
             font-size: 0.9rem;
         }
         .back-link:hover { text-decoration: underline; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group textarea {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            background: var(--card);
+            min-height: 300px;
+            resize: vertical;
+        }
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px var(--accent-light);
+        }
+        .profile-card {
+            background: var(--card);
+            border-radius: 8px;
+            padding: 1.5rem 2rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+            max-width: 700px;
+        }
+        .profile-card h2 {
+            font-size: 1.15rem;
+            margin-bottom: 1rem;
+        }
+        .suggestion-list {
+            padding-left: 1.25rem;
+            font-size: 0.85rem;
+            color: var(--muted);
+            line-height: 1.8;
+        }
+        .suggestion-list strong { color: var(--text); }
         .sold-section summary {
             cursor: pointer;
             font-size: 0.9rem;
@@ -231,6 +267,7 @@
             <h1><a href="/">Homepickle</a></h1>
             <div class="nav-links">
                 <a href="/">Dashboard</a>
+                <a href="/profile">Profile</a>
             </div>
         </div>
     </nav>

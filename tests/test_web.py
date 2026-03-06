@@ -158,6 +158,52 @@ def test_index_shows_status_badges() -> None:
         assert "SOLD" in html
 
 
+def test_profile_page_empty() -> None:
+    """Profile page renders with empty form when no profile exists."""
+    conn = _make_test_conn()
+    with patch("homepickle.web.get_connection", return_value=conn):
+        app = create_app()
+        client = app.test_client()
+        resp = client.get("/profile")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert "Buyer Profile" in html
+        assert "preferences" in html
+
+
+def test_profile_auto_save() -> None:
+    """Auto-save endpoint persists profile and returns JSON."""
+    from homepickle.storage import _SCHEMA
+
+    # Use a shared in-memory DB via URI so it survives conn.close().
+    uri = "file:test_profile_save?mode=memory&cache=shared"
+    setup = sqlite3.connect(uri, uri=True)
+    setup.row_factory = sqlite3.Row
+    setup.executescript(_SCHEMA)
+    _seed_db(setup)
+
+    def _get_conn() -> sqlite3.Connection:
+        c = sqlite3.connect(uri, uri=True)
+        c.row_factory = sqlite3.Row
+        return c
+
+    with patch("homepickle.web.get_connection", side_effect=_get_conn):
+        app = create_app()
+        client = app.test_client()
+        resp = client.post(
+            "/profile/save",
+            json={"preferences": "3+ beds, near BART"},
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["ok"] is True
+
+        resp = client.get("/profile")
+        html = resp.data.decode()
+        assert "3+ beds, near BART" in html
+
+    setup.close()
+
+
 def test_property_detail_not_found() -> None:
     """Property detail page handles unknown URL."""
     conn = _make_test_conn()

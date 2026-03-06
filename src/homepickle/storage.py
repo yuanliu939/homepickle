@@ -42,6 +42,12 @@ CREATE TABLE IF NOT EXISTS evaluations (
 CREATE INDEX IF NOT EXISTS idx_evaluations_url
     ON evaluations(property_url);
 
+CREATE TABLE IF NOT EXISTS user_profile (
+    id              INTEGER PRIMARY KEY CHECK (id = 1),
+    preferences     TEXT NOT NULL DEFAULT '',
+    updated_at      TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS favorites_sync (
     property_url    TEXT NOT NULL,
     list_name       TEXT NOT NULL,
@@ -358,6 +364,39 @@ def get_distinct_cities(conn: sqlite3.Connection) -> list[str]:
         "SELECT DISTINCT city FROM properties WHERE city != '' ORDER BY city"
     ).fetchall()
     return [r["city"] for r in rows]
+
+
+def get_profile(conn: sqlite3.Connection) -> sqlite3.Row | None:
+    """Fetch the user profile.
+
+    Args:
+        conn: An open database connection.
+
+    Returns:
+        A Row with profile data, or None if no profile exists.
+    """
+    return conn.execute("SELECT * FROM user_profile WHERE id = 1").fetchone()
+
+
+def save_profile(conn: sqlite3.Connection, preferences: str) -> None:
+    """Create or update the user profile.
+
+    Args:
+        conn: An open database connection.
+        preferences: Free-text buyer profile describing preferences,
+            concerns, commute needs, and any other requirements.
+    """
+    conn.execute(
+        """\
+        INSERT INTO user_profile (id, preferences, updated_at)
+        VALUES (1, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            preferences=excluded.preferences,
+            updated_at=excluded.updated_at
+        """,
+        (preferences, _now()),
+    )
+    conn.commit()
 
 
 def row_to_property(row: sqlite3.Row) -> Property:
