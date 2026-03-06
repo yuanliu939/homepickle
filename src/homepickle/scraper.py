@@ -244,7 +244,7 @@ async def _parse_property_card(card) -> Property | None:
             else href
         )
 
-        img_el = await card.query_selector("img.homecard-image")
+        img_el = await card.query_selector("img.bp-Homecard__Photo--image")
         image_url = await img_el.get_attribute("src") if img_el else None
 
         return Property(
