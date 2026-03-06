@@ -192,6 +192,19 @@
             font-size: 0.9rem;
         }
         .back-link:hover { text-decoration: underline; }
+        .regen-btn {
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--muted);
+            cursor: pointer;
+            font-size: 1rem;
+            padding: 0.15rem 0.4rem;
+            line-height: 1;
+        }
+        .regen-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .regen-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .regen-btn.done { color: var(--green); border-color: var(--green); }
         .form-group { margin-bottom: 1rem; }
         .form-group textarea {
             width: 100%;

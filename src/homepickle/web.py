@@ -7,6 +7,7 @@ from markupsafe import Markup
 
 from homepickle.storage import (
     get_all_evaluations,
+    get_all_personalized_evaluations,
     get_all_properties,
     get_connection,
     get_distinct_cities,
@@ -16,6 +17,7 @@ from homepickle.storage import (
     get_profile,
     get_properties_for_list,
     get_property,
+    request_regeneration,
     save_profile,
 )
 
@@ -265,9 +267,12 @@ def create_app() -> Flask:
             active_properties = [p for p in properties if not _is_sold(p["status"])]
             sold_properties = [p for p in properties if _is_sold(p["status"])]
 
-            # Build evaluation lookup.
+            # Build evaluation lookups.
             all_evals = get_all_evaluations(conn)
             eval_map = {r["property_url"]: r for r in all_evals}
+            all_personal = get_all_personalized_evaluations(conn)
+            personal_map = {r["property_url"]: r for r in all_personal}
+            has_profile = get_profile(conn) is not None
 
             lists = get_favorite_list_names(conn)
             cities = get_distinct_cities(conn)
@@ -278,6 +283,8 @@ def create_app() -> Flask:
                 active_properties=active_properties,
                 sold_properties=sold_properties,
                 eval_map=eval_map,
+                personal_map=personal_map,
+                has_profile=has_profile,
                 lists=lists,
                 cities=cities,
                 active_list=list_name,
@@ -339,6 +346,27 @@ def create_app() -> Flask:
         try:
             data = request.get_json()
             save_profile(conn, data.get("preferences", ""))
+            return jsonify({"ok": True})
+        finally:
+            conn.close()
+
+    @app.route("/regenerate", methods=["POST"])
+    def regenerate() -> str:
+        """Queue a property for personalized evaluation regeneration.
+
+        Writes to the regenerate_queue table; the daemon picks it up.
+
+        Returns:
+            JSON response indicating the request was queued.
+        """
+        data = request.get_json()
+        url = data.get("url", "")
+        if not url:
+            return jsonify({"ok": False, "error": "Missing url"}), 400
+
+        conn = get_connection()
+        try:
+            request_regeneration(conn, url)
             return jsonify({"ok": True})
         finally:
             conn.close()

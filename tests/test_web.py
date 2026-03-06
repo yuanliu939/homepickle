@@ -204,6 +204,38 @@ def test_profile_auto_save() -> None:
     setup.close()
 
 
+def test_regenerate_queues_property() -> None:
+    """POST to /regenerate adds property to regeneration queue."""
+    from homepickle.storage import _SCHEMA
+
+    uri = "file:test_regen?mode=memory&cache=shared"
+    setup = sqlite3.connect(uri, uri=True)
+    setup.row_factory = sqlite3.Row
+    setup.executescript(_SCHEMA)
+    _seed_db(setup)
+
+    def _get_conn() -> sqlite3.Connection:
+        c = sqlite3.connect(uri, uri=True)
+        c.row_factory = sqlite3.Row
+        return c
+
+    with patch("homepickle.web.get_connection", side_effect=_get_conn):
+        app = create_app()
+        client = app.test_client()
+        resp = client.post(
+            "/regenerate",
+            json={"url": "https://redfin.com/1"},
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["ok"] is True
+
+        queue = setup.execute("SELECT * FROM regenerate_queue").fetchall()
+        assert len(queue) == 1
+        assert queue[0]["property_url"] == "https://redfin.com/1"
+
+    setup.close()
+
+
 def test_property_detail_not_found() -> None:
     """Property detail page handles unknown URL."""
     conn = _make_test_conn()

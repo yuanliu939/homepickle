@@ -56,6 +56,11 @@ CREATE TABLE IF NOT EXISTS personalized_evaluations (
 CREATE INDEX IF NOT EXISTS idx_personalized_url
     ON personalized_evaluations(property_url);
 
+CREATE TABLE IF NOT EXISTS regenerate_queue (
+    property_url    TEXT PRIMARY KEY REFERENCES properties(url),
+    requested_at    TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS user_profile (
     id              INTEGER PRIMARY KEY CHECK (id = 1),
     preferences     TEXT NOT NULL DEFAULT '',
@@ -364,6 +369,75 @@ def needs_evaluation(
     if row is None:
         return True
     return row["price_at_eval"] != current_price
+
+
+def request_regeneration(conn: sqlite3.Connection, property_url: str) -> None:
+    """Queue a property for personalized evaluation regeneration.
+
+    Args:
+        conn: An open database connection.
+        property_url: The property URL to regenerate.
+    """
+    conn.execute(
+        """\
+        INSERT INTO regenerate_queue (property_url, requested_at)
+        VALUES (?, ?)
+        ON CONFLICT(property_url) DO UPDATE SET requested_at=excluded.requested_at
+        """,
+        (property_url, _now()),
+    )
+    conn.commit()
+
+
+def get_regeneration_queue(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Fetch all properties queued for regeneration.
+
+    Args:
+        conn: An open database connection.
+
+    Returns:
+        A list of Rows with property_url and requested_at.
+    """
+    return conn.execute(
+        "SELECT * FROM regenerate_queue ORDER BY requested_at"
+    ).fetchall()
+
+
+def clear_regeneration(conn: sqlite3.Connection, property_url: str) -> None:
+    """Remove a property from the regeneration queue.
+
+    Args:
+        conn: An open database connection.
+        property_url: The property URL to remove.
+    """
+    conn.execute(
+        "DELETE FROM regenerate_queue WHERE property_url = ?",
+        (property_url,),
+    )
+
+
+def get_all_personalized_evaluations(
+    conn: sqlite3.Connection,
+) -> list[sqlite3.Row]:
+    """Fetch the latest personalized evaluation for every property.
+
+    Args:
+        conn: An open database connection.
+
+    Returns:
+        A list of Rows, one per property, most recently personalized first.
+    """
+    return conn.execute(
+        """\
+        SELECT pe.*
+        FROM personalized_evaluations pe
+        WHERE pe.id = (
+            SELECT MAX(pe2.id) FROM personalized_evaluations pe2
+            WHERE pe2.property_url = pe.property_url
+        )
+        ORDER BY pe.created_at DESC
+        """,
+    ).fetchall()
 
 
 def get_all_evaluations(conn: sqlite3.Connection) -> list[sqlite3.Row]:

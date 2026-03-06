@@ -5,11 +5,14 @@ import sqlite3
 from homepickle.models import Property
 from homepickle.storage import (
     _SCHEMA,
+    clear_regeneration,
     get_latest_evaluation,
     get_latest_personalized_evaluation,
     get_profile,
+    get_regeneration_queue,
     needs_evaluation,
     needs_personalized_evaluation,
+    request_regeneration,
     save_evaluation,
     save_personalized_evaluation,
     save_profile,
@@ -263,6 +266,28 @@ def test_personalized_evaluation_lifecycle() -> None:
     conn.commit()
     new_base = get_latest_evaluation(conn, prop.url)
     assert needs_personalized_evaluation(conn, prop.url, new_base["id"], profile)
+
+
+def test_regeneration_queue() -> None:
+    """Regeneration queue: request, list, clear."""
+    conn = _make_conn()
+    prop = _make_property()
+    upsert_property(conn, prop)
+    conn.commit()
+
+    assert len(get_regeneration_queue(conn)) == 0
+    request_regeneration(conn, prop.url)
+    queue = get_regeneration_queue(conn)
+    assert len(queue) == 1
+    assert queue[0]["property_url"] == prop.url
+
+    # Duplicate request just updates timestamp.
+    request_regeneration(conn, prop.url)
+    assert len(get_regeneration_queue(conn)) == 1
+
+    clear_regeneration(conn, prop.url)
+    conn.commit()
+    assert len(get_regeneration_queue(conn)) == 0
 
 
 def test_save_profile_upsert() -> None:

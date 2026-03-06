@@ -72,10 +72,18 @@
         {% endif %}
     </td>
     <td>
-        {% if p['url'] in eval_map %}
-            <span class="badge badge-green">Done</span>
+        {% if p['url'] in personal_map %}
+            <span class="badge badge-green">Personalized</span>
+        {% elif p['url'] in eval_map %}
+            <span class="badge badge-blue">Base</span>
         {% else %}
             <span class="badge badge-gray">Pending</span>
+        {% endif %}
+    </td>
+    <td>
+        {% if p['url'] in eval_map and has_profile %}
+            <button class="regen-btn" data-url="{{ p['url'] }}"
+                    title="Regenerate personalized evaluation">&#x21bb;</button>
         {% endif %}
     </td>
 </tr>
@@ -94,6 +102,7 @@
         {{ sort_link('ppsf', '$/sqft', right=True) }}
         {{ sort_link('status', 'Status') }}
         <th>Evaluation</th>
+        <th></th>
     </tr>
 </thead>
 {% endmacro %}
@@ -129,5 +138,35 @@
     <p>Run <code>homepickle sync</code> to scrape favorites and generate evaluations.</p>
 </div>
 {% endif %}
+
+<script>
+document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.regen-btn');
+    if (!btn) return;
+    var url = btn.getAttribute('data-url');
+    btn.disabled = true;
+    btn.textContent = '...';
+    fetch('/regenerate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({url: url})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.ok) {
+            btn.textContent = '\u2713';
+            btn.className = 'regen-btn done';
+            btn.title = 'Queued for regeneration';
+        } else {
+            btn.textContent = '\u21bb';
+            btn.disabled = false;
+        }
+    })
+    .catch(function() {
+        btn.textContent = '\u21bb';
+        btn.disabled = false;
+    });
+});
+</script>
 
 {% endblock %}

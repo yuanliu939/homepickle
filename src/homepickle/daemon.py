@@ -18,11 +18,15 @@ from homepickle.scraper import (
     scrape_property_page,
 )
 from homepickle.storage import (
+    clear_regeneration,
     get_connection,
     get_latest_evaluation,
     get_profile,
+    get_property,
+    get_regeneration_queue,
     needs_evaluation,
     needs_personalized_evaluation,
+    row_to_property,
     save_evaluation,
     save_personalized_evaluation,
     sync_favorites,
@@ -69,6 +73,50 @@ def _run_personalization(
         conn, prop.url, base_eval["id"], DEFAULT_MODEL, result, profile
     )
     conn.commit()
+
+
+def _process_regeneration_queue(conn, profile: str) -> int:
+    """Process all pending regeneration requests.
+
+    Args:
+        conn: An open database connection.
+        profile: The buyer profile text.
+
+    Returns:
+        Number of properties regenerated.
+    """
+    queue = get_regeneration_queue(conn)
+    if not queue:
+        return 0
+
+    log.info("Processing %d regeneration request(s).", len(queue))
+    count = 0
+    for row in queue:
+        if _shutdown.is_set():
+            break
+        url = row["property_url"]
+        prop_row = get_property(conn, url)
+        base_eval = get_latest_evaluation(conn, url)
+        if not prop_row or not base_eval:
+            clear_regeneration(conn, url)
+            conn.commit()
+            continue
+
+        prop = row_to_property(prop_row)
+        label = f"{prop.address}, {prop.city}" if prop.city else prop.address
+        log.info("  Regenerating: %s", label)
+
+        result = personalize_evaluation(
+            prop, base_eval["evaluation_text"], profile
+        )
+        save_personalized_evaluation(
+            conn, url, base_eval["id"], DEFAULT_MODEL, result, profile
+        )
+        clear_regeneration(conn, url)
+        conn.commit()
+        count += 1
+
+    return count
 
 
 async def _run_sync_cycle() -> str:
@@ -163,12 +211,20 @@ async def _run_sync_cycle() -> str:
                 _run_personalization(conn, prop, profile)
                 personal_count += 1
 
+        # --- Process regeneration queue ---
+        regen_count = 0
+        if profile and not _shutdown.is_set():
+            regen_count = _process_regeneration_queue(conn, profile)
+
         parts = [f"Sync complete. {total_new} new, {total_removed} removed"]
         if base_count:
             parts.append(f"{base_count} evaluated")
         if personal_count:
             parts.append(f"{personal_count} personalized")
-        if not base_count and not personal_count and not to_evaluate:
+        if regen_count:
+            parts.append(f"{regen_count} regenerated")
+        all_idle = not (base_count or personal_count or regen_count or to_evaluate)
+        if all_idle:
             parts.append("all up to date")
         return ", ".join(parts) + "."
     finally:
