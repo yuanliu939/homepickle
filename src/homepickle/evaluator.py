@@ -1,10 +1,18 @@
-"""LLM-based property evaluation using Claude CLI."""
+"""LLM-based property evaluation using Claude CLI.
+
+Two-tier evaluation architecture:
+- Tier 1 (base): User-agnostic property analysis. Reusable across users.
+- Tier 2 (personalized): Takes the base evaluation + buyer profile and
+  produces personalized commute analysis and fit assessment.
+"""
 
 import subprocess
 
 from homepickle.models import Property
 
-SYSTEM_PROMPT = """\
+DEFAULT_MODEL = "opus"
+
+BASE_SYSTEM_PROMPT = """\
 You are a real estate analyst helping a homebuyer evaluate properties.
 Given detailed Redfin listing data for a property, provide a thorough evaluation.
 
@@ -35,24 +43,39 @@ Be direct, specific, and practical. Flag real risks honestly — don't sugarcoat
 Use the actual data from the listing, not generic advice.\
 """
 
-PERSONALIZED_ADDENDUM = """\
+PERSONALIZED_SYSTEM_PROMPT = """\
+You are a real estate analyst providing a personalized assessment for a \
+specific buyer.
 
-The buyer has provided the following profile. Tailor your evaluation to \
-their specific situation.
+You will be given:
+1. An existing property evaluation (the base analysis).
+2. The buyer's profile describing their situation, preferences, and concerns.
 
-Add these additional sections AFTER the standard sections:
+Using BOTH inputs, provide a personalized assessment with these sections:
 
 ## Commute Analysis
 Analyze realistic commute options from this property to the buyer's \
-workplace. Consider driving (with traffic), public transit (BART, Caltrain, \
-bus), and park-and-ride options. Estimate commute times for typical rush \
-hour. Mention specific stations, routes, and parking availability. Be \
-concrete — name the nearest transit stops and realistic door-to-door times.
+workplace (if mentioned in their profile). Consider driving (with traffic), \
+public transit (BART, Caltrain, bus), and park-and-ride options. Estimate \
+commute times for typical rush hour. Mention specific stations, routes, and \
+parking availability. Be concrete — name the nearest transit stops and \
+realistic door-to-door times.
 
 ## Personal Fit
 How well does this property match the buyer's stated preferences and \
-concerns? Call out specific matches and mismatches. Be honest about \
-dealbreakers.\
+concerns? Walk through each stated preference and assess the match. Be \
+honest about dealbreakers.
+
+## Personalized Risks
+Any risks from the base evaluation that are especially relevant to this \
+buyer's situation, plus any additional concerns specific to their needs.
+
+## Verdict
+A direct recommendation: is this property worth pursuing for THIS buyer? \
+Why or why not?
+
+Be direct, specific, and practical. Reference concrete details from both \
+the evaluation and the buyer's profile.\
 """
 
 SUMMARY_SYSTEM_PROMPT = (
@@ -69,7 +92,7 @@ def _run_claude(system_prompt: str, user_message: str, model: str) -> str:
     Args:
         system_prompt: System prompt for the LLM.
         user_message: User message to send.
-        model: Claude model name (e.g. "sonnet").
+        model: Claude model name (e.g. "opus").
 
     Returns:
         The text response from Claude.
@@ -97,47 +120,63 @@ def _run_claude(system_prompt: str, user_message: str, model: str) -> str:
 
 
 def evaluate_property(
-    prop: Property,
-    page_text: str,
-    model: str = "sonnet",
-    profile: str | None = None,
+    prop: Property, page_text: str, model: str = DEFAULT_MODEL
 ) -> str:
-    """Send property data to Claude for detailed evaluation.
+    """Tier 1: User-agnostic property evaluation.
 
-    If a buyer profile is provided, the evaluation includes personalized
-    commute analysis and personal fit sections.
+    This produces a reusable base evaluation that can be shared across
+    users and used as input for personalized evaluations.
 
     Args:
         prop: The Property object with basic scraped data.
         page_text: Full text content scraped from the Redfin detail page.
         model: Claude model alias or ID to use.
-        profile: Optional free-text buyer profile describing preferences,
-            commute needs, concerns, etc.
 
     Returns:
-        The evaluation text from Claude.
+        The base evaluation text from Claude.
     """
-    system_prompt = SYSTEM_PROMPT
-    if profile:
-        system_prompt += PERSONALIZED_ADDENDUM
-
     user_message = (
         f"Evaluate this property:\n\n"
         f"**{prop.address}, {prop.city}, {prop.state} {prop.zip_code}**\n"
         f"URL: {prop.url}\n\n"
         f"--- Redfin Listing Data ---\n{page_text}\n"
     )
+    return _run_claude(BASE_SYSTEM_PROMPT, user_message, model)
 
-    if profile:
-        user_message += f"\n--- Buyer Profile ---\n{profile}\n"
 
-    return _run_claude(system_prompt, user_message, model)
+def personalize_evaluation(
+    prop: Property,
+    base_evaluation: str,
+    profile: str,
+    model: str = DEFAULT_MODEL,
+) -> str:
+    """Tier 2: Personalized assessment based on base evaluation + profile.
+
+    Takes an existing base evaluation and the buyer's profile to produce
+    a personalized analysis with commute, fit, and verdict sections.
+
+    Args:
+        prop: The Property object.
+        base_evaluation: The tier-1 base evaluation text.
+        profile: Free-text buyer profile.
+        model: Claude model alias or ID to use.
+
+    Returns:
+        The personalized evaluation text from Claude.
+    """
+    user_message = (
+        f"Property: **{prop.address}, {prop.city}, "
+        f"{prop.state} {prop.zip_code}**\n\n"
+        f"--- Base Evaluation ---\n{base_evaluation}\n\n"
+        f"--- Buyer Profile ---\n{profile}\n"
+    )
+    return _run_claude(PERSONALIZED_SYSTEM_PROMPT, user_message, model)
 
 
 def evaluate_property_summary(
     properties: list[Property],
     page_texts: dict[str, str],
-    model: str = "sonnet",
+    model: str = DEFAULT_MODEL,
 ) -> str:
     """Generate a comparative summary across multiple properties.
 

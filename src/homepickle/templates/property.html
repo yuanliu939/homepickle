@@ -37,7 +37,7 @@
     {{ evaluation['evaluation_text']|render_markdown }}
 </div>
 <p class="text-muted" style="margin-top: 0.75rem; font-size: 0.8rem;">
-    Evaluated {{ evaluation['created_at'][:10] }} &middot;
+    Base evaluation &middot; {{ evaluation['created_at'][:10] }} &middot;
     Model: {{ evaluation['model'] }}
     {% if evaluation['price_at_eval'] %}
         &middot; Price at eval: {{ evaluation['price_at_eval']|currency }}
@@ -47,6 +47,20 @@
 <div class="empty-state">
     <h2>No evaluation yet</h2>
     <p>Run <code>homepickle sync</code> or <code>homepickle evaluate {{ prop['url'] }}</code></p>
+</div>
+{% endif %}
+
+{% if personalized %}
+<div class="eval-content" style="margin-top: 1.5rem; border-left: 3px solid var(--accent);">
+    {{ personalized['evaluation_text']|render_markdown }}
+</div>
+<p class="text-muted" style="margin-top: 0.75rem; font-size: 0.8rem;">
+    Personalized assessment &middot; {{ personalized['created_at'][:10] }} &middot;
+    Model: {{ personalized['model'] }}
+</p>
+{% elif evaluation %}
+<div class="empty-state" style="padding: 1.5rem;">
+    <p class="text-muted">No personalized assessment yet. <a href="/profile">Set up your profile</a> and run sync to generate one.</p>
 </div>
 {% endif %}
 

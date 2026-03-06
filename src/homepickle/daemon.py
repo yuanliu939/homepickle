@@ -6,7 +6,11 @@ import logging
 import signal
 
 from homepickle.browser import create_context
-from homepickle.evaluator import evaluate_property
+from homepickle.evaluator import (
+    DEFAULT_MODEL,
+    evaluate_property,
+    personalize_evaluation,
+)
 from homepickle.models import Property
 from homepickle.scraper import (
     get_favorite_lists,
@@ -15,9 +19,12 @@ from homepickle.scraper import (
 )
 from homepickle.storage import (
     get_connection,
+    get_latest_evaluation,
     get_profile,
     needs_evaluation,
+    needs_personalized_evaluation,
     save_evaluation,
+    save_personalized_evaluation,
     sync_favorites,
     upsert_property,
 )
@@ -33,8 +40,39 @@ def _handle_signal() -> None:
     _shutdown.set()
 
 
+def _run_personalization(
+    conn, prop: Property, profile: str
+) -> None:
+    """Run tier-2 personalization for a single property if needed.
+
+    Args:
+        conn: An open database connection.
+        prop: The property to personalize.
+        profile: The buyer profile text.
+    """
+    if not prop.url:
+        return
+    base_eval = get_latest_evaluation(conn, prop.url)
+    if base_eval is None:
+        return
+    if not needs_personalized_evaluation(
+        conn, prop.url, base_eval["id"], profile
+    ):
+        return
+
+    label = f"{prop.address}, {prop.city}" if prop.city else prop.address
+    log.info("  Personalizing: %s", label)
+    result = personalize_evaluation(
+        prop, base_eval["evaluation_text"], profile
+    )
+    save_personalized_evaluation(
+        conn, prop.url, base_eval["id"], DEFAULT_MODEL, result, profile
+    )
+    conn.commit()
+
+
 async def _run_sync_cycle() -> str:
-    """Run one full sync cycle: scrape, diff, evaluate.
+    """Run one full sync cycle: scrape, diff, evaluate, personalize.
 
     Returns:
         A summary string describing what happened.
@@ -48,6 +86,7 @@ async def _run_sync_cycle() -> str:
         total_new = 0
         total_removed = 0
         to_evaluate: list[Property] = []
+        all_properties: list[Property] = []
 
         for fav_list in fav_lists:
             log.info("Scraping: %s", fav_list.name)
@@ -65,49 +104,73 @@ async def _run_sync_cycle() -> str:
 
             total_new += len(new_props)
             total_removed += len(removed_urls)
+            all_properties.extend(properties)
 
             for prop in properties:
                 if prop.url and needs_evaluation(conn, prop.url, prop.price):
                     to_evaluate.append(prop)
 
-        if not to_evaluate:
-            return (
-                f"Sync complete. {total_new} new, {total_removed} removed. "
-                "All evaluations up to date."
-            )
+        # --- Tier 1: Base evaluations ---
+        base_count = 0
+        if to_evaluate:
+            log.info("%d properties need base evaluation.", len(to_evaluate))
 
-        log.info("%d properties need evaluation.", len(to_evaluate))
+            for i, prop in enumerate(to_evaluate):
+                if _shutdown.is_set():
+                    break
+                if not prop.url:
+                    continue
+                label = (
+                    f"{prop.address}, {prop.city}"
+                    if prop.city else prop.address
+                )
+                log.info("[%d/%d] %s", i + 1, len(to_evaluate), label)
 
-        # Load buyer profile for personalized evaluation.
+                page_text = await scrape_property_page(context, prop.url)
+                text_hash = hashlib.sha256(
+                    page_text.encode()
+                ).hexdigest()[:16]
+
+                log.info("  Evaluating with Claude...")
+                evaluation = evaluate_property(prop, page_text)
+
+                save_evaluation(
+                    conn, prop.url, DEFAULT_MODEL, evaluation,
+                    text_hash, prop.price,
+                )
+                conn.commit()
+                base_count += 1
+
+        # --- Tier 2: Personalized evaluations ---
         profile_row = get_profile(conn)
         profile = profile_row["preferences"] if profile_row else None
+        personal_count = 0
 
-        for i, prop in enumerate(to_evaluate):
-            if _shutdown.is_set():
-                return (
-                    f"Sync interrupted. {total_new} new, {total_removed} removed, "
-                    f"{i}/{len(to_evaluate)} evaluated before shutdown."
-                )
-            if not prop.url:
-                continue
-            label = f"{prop.address}, {prop.city}" if prop.city else prop.address
-            log.info("[%d/%d] %s", i + 1, len(to_evaluate), label)
+        if profile and not _shutdown.is_set():
+            log.info("Running personalized evaluations...")
+            for prop in all_properties:
+                if _shutdown.is_set():
+                    break
+                if not prop.url:
+                    continue
+                base_eval = get_latest_evaluation(conn, prop.url)
+                if base_eval is None:
+                    continue
+                if not needs_personalized_evaluation(
+                    conn, prop.url, base_eval["id"], profile
+                ):
+                    continue
+                _run_personalization(conn, prop, profile)
+                personal_count += 1
 
-            page_text = await scrape_property_page(context, prop.url)
-            text_hash = hashlib.sha256(page_text.encode()).hexdigest()[:16]
-
-            log.info("  Evaluating with Claude...")
-            evaluation = evaluate_property(prop, page_text, profile=profile)
-
-            save_evaluation(
-                conn, prop.url, "sonnet", evaluation, text_hash, prop.price
-            )
-            conn.commit()
-
-        return (
-            f"Sync complete. {total_new} new, {total_removed} removed, "
-            f"{len(to_evaluate)} evaluated."
-        )
+        parts = [f"Sync complete. {total_new} new, {total_removed} removed"]
+        if base_count:
+            parts.append(f"{base_count} evaluated")
+        if personal_count:
+            parts.append(f"{personal_count} personalized")
+        if not base_count and not personal_count and not to_evaluate:
+            parts.append("all up to date")
+        return ", ".join(parts) + "."
     finally:
         conn.close()
         try:

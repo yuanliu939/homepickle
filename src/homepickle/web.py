@@ -12,6 +12,7 @@ from homepickle.storage import (
     get_distinct_cities,
     get_favorite_list_names,
     get_latest_evaluation,
+    get_latest_personalized_evaluation,
     get_profile,
     get_properties_for_list,
     get_property,
@@ -300,10 +301,15 @@ def create_app() -> Flask:
         try:
             prop = get_property(conn, url)
             evaluation = get_latest_evaluation(conn, url) if prop else None
+            personalized = (
+                get_latest_personalized_evaluation(conn, url)
+                if prop else None
+            )
             return render_template(
                 "property.html",
                 prop=prop,
                 evaluation=evaluation,
+                personalized=personalized,
             )
         finally:
             conn.close()

@@ -6,9 +6,12 @@ from homepickle.models import Property
 from homepickle.storage import (
     _SCHEMA,
     get_latest_evaluation,
+    get_latest_personalized_evaluation,
     get_profile,
     needs_evaluation,
+    needs_personalized_evaluation,
     save_evaluation,
+    save_personalized_evaluation,
     save_profile,
     sync_favorites,
     upsert_property,
@@ -222,6 +225,44 @@ def test_save_and_get_profile() -> None:
     row = get_profile(conn)
     assert row is not None
     assert "500 Howard St" in row["preferences"]
+
+
+def test_personalized_evaluation_lifecycle() -> None:
+    """Save, retrieve, and check staleness of personalized evaluations."""
+    conn = _make_conn()
+    prop = _make_property()
+    upsert_property(conn, prop)
+    save_evaluation(conn, prop.url, "opus", "Base eval text", "hash1", 500_000)
+    conn.commit()
+
+    base = get_latest_evaluation(conn, prop.url)
+    profile = "I work at 500 Howard St SF, need 3+ beds"
+
+    # No personalized eval exists yet.
+    assert needs_personalized_evaluation(conn, prop.url, base["id"], profile)
+
+    save_personalized_evaluation(
+        conn, prop.url, base["id"], "opus", "Personalized text", profile
+    )
+    conn.commit()
+
+    # Now it exists and is up to date.
+    assert not needs_personalized_evaluation(conn, prop.url, base["id"], profile)
+
+    row = get_latest_personalized_evaluation(conn, prop.url)
+    assert row is not None
+    assert row["evaluation_text"] == "Personalized text"
+    assert row["base_eval_id"] == base["id"]
+
+    # Profile change triggers re-personalization.
+    new_profile = "Different preferences entirely"
+    assert needs_personalized_evaluation(conn, prop.url, base["id"], new_profile)
+
+    # New base eval triggers re-personalization.
+    save_evaluation(conn, prop.url, "opus", "New base", "hash2", 500_000)
+    conn.commit()
+    new_base = get_latest_evaluation(conn, prop.url)
+    assert needs_personalized_evaluation(conn, prop.url, new_base["id"], profile)
 
 
 def test_save_profile_upsert() -> None:

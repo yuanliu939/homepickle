@@ -1,5 +1,6 @@
 """SQLite-based storage for properties, evaluations, and sync state."""
 
+import hashlib
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -41,6 +42,19 @@ CREATE TABLE IF NOT EXISTS evaluations (
 
 CREATE INDEX IF NOT EXISTS idx_evaluations_url
     ON evaluations(property_url);
+
+CREATE TABLE IF NOT EXISTS personalized_evaluations (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    property_url    TEXT NOT NULL REFERENCES properties(url),
+    base_eval_id    INTEGER NOT NULL REFERENCES evaluations(id),
+    model           TEXT NOT NULL,
+    evaluation_text TEXT NOT NULL,
+    profile_hash    TEXT NOT NULL,
+    created_at      TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_personalized_url
+    ON personalized_evaluations(property_url);
 
 CREATE TABLE IF NOT EXISTS user_profile (
     id              INTEGER PRIMARY KEY CHECK (id = 1),
@@ -236,6 +250,97 @@ def get_latest_evaluation(
         "ORDER BY created_at DESC LIMIT 1",
         (property_url,),
     ).fetchone()
+
+
+def _profile_hash(profile: str) -> str:
+    """Compute a short hash of a profile string.
+
+    Args:
+        profile: The profile text.
+
+    Returns:
+        A 16-character hex digest.
+    """
+    return hashlib.sha256(profile.encode()).hexdigest()[:16]
+
+
+def save_personalized_evaluation(
+    conn: sqlite3.Connection,
+    property_url: str,
+    base_eval_id: int,
+    model: str,
+    evaluation_text: str,
+    profile: str,
+) -> None:
+    """Store a personalized evaluation result.
+
+    Args:
+        conn: An open database connection.
+        property_url: The property URL this evaluation is for.
+        base_eval_id: The ID of the base evaluation this builds on.
+        model: The model used for personalization.
+        evaluation_text: The personalized evaluation text.
+        profile: The buyer profile text used.
+    """
+    conn.execute(
+        """\
+        INSERT INTO personalized_evaluations
+            (property_url, base_eval_id, model, evaluation_text,
+             profile_hash, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (property_url, base_eval_id, model, evaluation_text,
+         _profile_hash(profile), _now()),
+    )
+
+
+def get_latest_personalized_evaluation(
+    conn: sqlite3.Connection, property_url: str
+) -> sqlite3.Row | None:
+    """Fetch the most recent personalized evaluation for a property.
+
+    Args:
+        conn: An open database connection.
+        property_url: The property URL to look up.
+
+    Returns:
+        A Row with personalized evaluation data, or None.
+    """
+    return conn.execute(
+        "SELECT * FROM personalized_evaluations WHERE property_url = ? "
+        "ORDER BY created_at DESC LIMIT 1",
+        (property_url,),
+    ).fetchone()
+
+
+def needs_personalized_evaluation(
+    conn: sqlite3.Connection,
+    property_url: str,
+    base_eval_id: int,
+    profile: str,
+) -> bool:
+    """Check whether a property needs a (re-)personalized evaluation.
+
+    Needs personalization if:
+    - No personalized evaluation exists for this property, OR
+    - The base evaluation has changed (different base_eval_id), OR
+    - The buyer profile has changed (different hash).
+
+    Args:
+        conn: An open database connection.
+        property_url: The property URL to check.
+        base_eval_id: The current base evaluation ID.
+        profile: The current buyer profile text.
+
+    Returns:
+        True if personalization should be run.
+    """
+    row = get_latest_personalized_evaluation(conn, property_url)
+    if row is None:
+        return True
+    if row["base_eval_id"] != base_eval_id:
+        return True
+    return row["profile_hash"] != _profile_hash(profile)
 
 
 def needs_evaluation(

@@ -19,7 +19,11 @@ from pathlib import Path
 
 from homepickle.analyzer import format_report
 from homepickle.browser import create_context, interactive_login
-from homepickle.evaluator import evaluate_property
+from homepickle.evaluator import (
+    DEFAULT_MODEL,
+    evaluate_property,
+    personalize_evaluation,
+)
 from homepickle.models import Property
 from homepickle.scraper import (
     debug_dump,
@@ -31,9 +35,12 @@ from homepickle.scraper import (
 from homepickle.storage import (
     get_all_evaluations,
     get_connection,
+    get_latest_evaluation,
     get_profile,
     needs_evaluation,
+    needs_personalized_evaluation,
     save_evaluation,
+    save_personalized_evaluation,
     sync_favorites,
     upsert_property,
 )
@@ -122,6 +129,7 @@ async def _sync() -> None:
         total_new = 0
         total_removed = 0
         to_evaluate: list[Property] = []
+        all_properties: list[Property] = []
 
         for fav_list in fav_lists:
             _log(f"\nScraping: {fav_list.name}")
@@ -146,47 +154,80 @@ async def _sync() -> None:
 
             total_new += len(new_props)
             total_removed += len(removed_urls)
+            all_properties.extend(properties)
 
             # Queue properties that need evaluation.
             for prop in properties:
                 if prop.url and needs_evaluation(conn, prop.url, prop.price):
                     to_evaluate.append(prop)
 
-        if not to_evaluate:
-            summary = (f"Sync complete. {total_new} new, "
-                       f"{total_removed} removed. "
-                       "All evaluations up to date.")
-            print(summary) if quiet else _log(f"\n{summary}")
-            return
+        # --- Tier 1: Base evaluations ---
+        base_count = 0
+        if to_evaluate:
+            _log(f"\n{len(to_evaluate)} properties need base evaluation. "
+                 "Scraping detail pages...")
 
-        _log(f"\n{len(to_evaluate)} properties need evaluation. "
-             "Scraping detail pages...")
+            for i, prop in enumerate(to_evaluate):
+                if not prop.url:
+                    continue
+                label = (f"{prop.address}, {prop.city}"
+                         if prop.city else prop.address)
+                _log(f"\n  [{i + 1}/{len(to_evaluate)}] {label}")
 
-        # Load buyer profile for personalized evaluation.
+                _log("    Scraping detail page...")
+                page_text = await scrape_property_page(context, prop.url)
+                text_hash = hashlib.sha256(
+                    page_text.encode()
+                ).hexdigest()[:16]
+
+                _log("    Evaluating with Claude...")
+                evaluation = evaluate_property(prop, page_text)
+
+                save_evaluation(
+                    conn, prop.url, DEFAULT_MODEL, evaluation,
+                    text_hash, prop.price,
+                )
+                conn.commit()
+                base_count += 1
+                _log("    Done.")
+
+        # --- Tier 2: Personalized evaluations ---
         profile_row = get_profile(conn)
         profile = profile_row["preferences"] if profile_row else None
+        personal_count = 0
 
-        for i, prop in enumerate(to_evaluate):
-            if not prop.url:
-                continue
-            label = f"{prop.address}, {prop.city}" if prop.city else prop.address
-            _log(f"\n  [{i + 1}/{len(to_evaluate)}] {label}")
+        if profile:
+            for prop in all_properties:
+                if not prop.url:
+                    continue
+                base_eval = get_latest_evaluation(conn, prop.url)
+                if base_eval is None:
+                    continue
+                if not needs_personalized_evaluation(
+                    conn, prop.url, base_eval["id"], profile
+                ):
+                    continue
+                label = (f"{prop.address}, {prop.city}"
+                         if prop.city else prop.address)
+                _log(f"\n  Personalizing: {label}")
+                result = personalize_evaluation(
+                    prop, base_eval["evaluation_text"], profile
+                )
+                save_personalized_evaluation(
+                    conn, prop.url, base_eval["id"],
+                    DEFAULT_MODEL, result, profile,
+                )
+                conn.commit()
+                personal_count += 1
 
-            _log("    Scraping detail page...")
-            page_text = await scrape_property_page(context, prop.url)
-            text_hash = hashlib.sha256(page_text.encode()).hexdigest()[:16]
-
-            _log("    Evaluating with Claude...")
-            evaluation = evaluate_property(prop, page_text, profile=profile)
-
-            save_evaluation(
-                conn, prop.url, "sonnet", evaluation, text_hash, prop.price
-            )
-            conn.commit()
-            _log("    Done.")
-
-        summary = (f"Sync complete. {total_new} new, {total_removed} removed, "
-                   f"{len(to_evaluate)} evaluated.")
+        parts = [f"Sync complete. {total_new} new, {total_removed} removed"]
+        if base_count:
+            parts.append(f"{base_count} evaluated")
+        if personal_count:
+            parts.append(f"{personal_count} personalized")
+        if not base_count and not personal_count and not to_evaluate:
+            parts.append("all up to date")
+        summary = ", ".join(parts) + "."
         print(summary) if quiet else _log(f"\n{summary}")
 
     finally:
@@ -241,17 +282,33 @@ async def _evaluate_single(context, conn, url: str) -> None:
     prop = Property(address=url, city="", state="", zip_code="", url=url)
     upsert_property(conn, prop)
 
-    # Load buyer profile for personalized evaluation.
+    # Tier 1: Base evaluation.
+    print("\nAsking Claude for base evaluation...\n")
+    base_result = evaluate_property(prop, page_text)
+    print(base_result)
+
+    save_evaluation(conn, url, DEFAULT_MODEL, base_result, text_hash, prop.price)
+    conn.commit()
+    print("\n(Base evaluation cached.)")
+
+    # Tier 2: Personalized evaluation (if profile exists).
     profile_row = get_profile(conn)
     profile = profile_row["preferences"] if profile_row else None
 
-    print("\nAsking Claude for evaluation...\n")
-    result = evaluate_property(prop, page_text, profile=profile)
-    print(result)
+    if profile:
+        base_eval = get_latest_evaluation(conn, url)
+        print("\nGenerating personalized assessment...\n")
+        personal_result = personalize_evaluation(
+            prop, base_result, profile
+        )
+        print(personal_result)
 
-    save_evaluation(conn, url, "sonnet", result, text_hash, prop.price)
-    conn.commit()
-    print("\n(Evaluation cached.)")
+        save_personalized_evaluation(
+            conn, url, base_eval["id"],
+            DEFAULT_MODEL, personal_result, profile,
+        )
+        conn.commit()
+        print("\n(Personalized evaluation cached.)")
 
 
 def _show_report() -> None:
