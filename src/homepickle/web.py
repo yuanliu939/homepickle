@@ -136,6 +136,27 @@ def create_app() -> Flask:
             return f"{value:,.1f}"
         return f"{value:,.0f}"
 
+    @app.template_filter("status_badge_class")
+    def status_badge_class_filter(status: str | None) -> str:
+        """Return a CSS class for the property status badge.
+
+        Args:
+            status: Listing status text (e.g. "SOLD", "PENDING").
+
+        Returns:
+            A CSS class string for the badge.
+        """
+        if not status:
+            return "badge-green"
+        s = status.upper()
+        if "SOLD" in s:
+            return "badge-red"
+        if "PENDING" in s or "CONTINGENT" in s or "UNDER CONTRACT" in s:
+            return "badge-orange"
+        if "COMING SOON" in s:
+            return "badge-blue"
+        return "badge-gray"
+
     @app.route("/")
     def index() -> str:
         """Render the main dashboard with all properties.

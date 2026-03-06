@@ -21,6 +21,7 @@ class Property:
     hoa: int | None = None
     url: str | None = None
     image_url: str | None = None
+    status: str | None = None
 
     @property
     def price_per_sqft(self) -> float | None:

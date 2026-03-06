@@ -247,6 +247,11 @@ async def _parse_property_card(card) -> Property | None:
         img_el = await card.query_selector("img.bp-Homecard__Photo--image")
         image_url = await img_el.get_attribute("src") if img_el else None
 
+        sash_el = await card.query_selector("[data-rf-test-id='home-sash']")
+        status = None
+        if sash_el:
+            status = (await sash_el.inner_text()).strip() or None
+
         return Property(
             address=address,
             city=city,
@@ -258,6 +263,7 @@ async def _parse_property_card(card) -> Property | None:
             sqft=sqft,
             url=url,
             image_url=image_url,
+            status=status,
         )
     except Exception:
         return None

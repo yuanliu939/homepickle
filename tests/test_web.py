@@ -16,14 +16,14 @@ def _seed_db(conn: sqlite3.Connection) -> None:
         "INSERT INTO properties VALUES "
         "('https://redfin.com/1', '123 Main St', 'Seattle', 'WA', '98101', "
         "500000, 3, 2.0, 1500, NULL, NULL, NULL, NULL, "
-        "'https://ssl.cdn-redfin.com/photo/1.jpg', "
+        "'https://ssl.cdn-redfin.com/photo/1.jpg', NULL, "
         "'2025-01-01', '2025-01-01')"
     )
     conn.execute(
         "INSERT INTO properties VALUES "
         "('https://redfin.com/2', '456 Oak Ave', 'Portland', 'OR', '97201', "
         "400000, 2, 1.0, 1200, NULL, NULL, NULL, NULL, "
-        "NULL, '2025-01-01', '2025-01-01')"
+        "NULL, 'SOLD', '2025-01-01', '2025-01-01')"
     )
     conn.execute(
         "INSERT INTO evaluations VALUES "
@@ -140,6 +140,22 @@ def test_property_detail_shows_hero_image() -> None:
         html = resp.data.decode()
         assert "prop-hero" in html
         assert "ssl.cdn-redfin.com/photo/1.jpg" in html
+
+
+def test_index_shows_status_badges() -> None:
+    """Index page renders status badges with correct colors."""
+    conn = _make_test_conn()
+    with patch("homepickle.web.get_connection", return_value=conn):
+        app = create_app()
+        client = app.test_client()
+        resp = client.get("/")
+        html = resp.data.decode()
+        # Property 1 has no status -> shows "Active" green badge.
+        assert "badge-green" in html
+        assert "Active" in html
+        # Property 2 has SOLD status -> shows red badge.
+        assert "badge-red" in html
+        assert "SOLD" in html
 
 
 def test_property_detail_not_found() -> None:

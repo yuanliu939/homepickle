@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS properties (
     days_on_market  INTEGER,
     hoa             INTEGER,
     image_url       TEXT,
+    status          TEXT,
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL
 );
@@ -90,6 +91,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "image_url" not in columns:
         conn.execute("ALTER TABLE properties ADD COLUMN image_url TEXT")
         conn.commit()
+    if "status" not in columns:
+        conn.execute("ALTER TABLE properties ADD COLUMN status TEXT")
+        conn.commit()
 
 
 def upsert_property(conn: sqlite3.Connection, prop: Property) -> None:
@@ -106,22 +110,22 @@ def upsert_property(conn: sqlite3.Connection, prop: Property) -> None:
         """\
         INSERT INTO properties
             (url, address, city, state, zip_code, price, beds, baths, sqft,
-             lot_sqft, year_built, days_on_market, hoa, image_url,
+             lot_sqft, year_built, days_on_market, hoa, image_url, status,
              created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(url) DO UPDATE SET
             address=excluded.address, city=excluded.city, state=excluded.state,
             zip_code=excluded.zip_code, price=excluded.price, beds=excluded.beds,
             baths=excluded.baths, sqft=excluded.sqft, lot_sqft=excluded.lot_sqft,
             year_built=excluded.year_built, days_on_market=excluded.days_on_market,
             hoa=excluded.hoa, image_url=COALESCE(excluded.image_url, image_url),
-            updated_at=excluded.updated_at
+            status=excluded.status, updated_at=excluded.updated_at
         """,
         (
             prop.url, prop.address, prop.city, prop.state, prop.zip_code,
             prop.price, prop.beds, prop.baths, prop.sqft, prop.lot_sqft,
             prop.year_built, prop.days_on_market, prop.hoa, prop.image_url,
-            now, now,
+            prop.status, now, now,
         ),
     )
 
@@ -380,4 +384,5 @@ def row_to_property(row: sqlite3.Row) -> Property:
         hoa=row["hoa"],
         url=row["url"],
         image_url=row["image_url"],
+        status=row["status"],
     )

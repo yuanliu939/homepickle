@@ -11,7 +11,12 @@
 </div>
 {% endif %}
 <div class="prop-header">
-    <h2>{{ prop['address'] }}</h2>
+    <h2>
+        {{ prop['address'] }}
+        {% if prop['status'] %}
+            <span class="badge {{ prop['status']|status_badge_class }}">{{ prop['status'] }}</span>
+        {% endif %}
+    </h2>
     <div class="meta">
         <span>{{ prop['city'] }}, {{ prop['state'] }} {{ prop['zip_code'] }}</span>
         {% if prop['price'] %}<span><strong>{{ prop['price']|currency }}</strong></span>{% endif %}

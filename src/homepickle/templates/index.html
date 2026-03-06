@@ -40,6 +40,7 @@
             <th class="text-right">Baths</th>
             <th class="text-right">Sqft</th>
             <th class="text-right">$/sqft</th>
+            <th>Status</th>
             <th>Evaluation</th>
         </tr>
     </thead>
@@ -69,6 +70,13 @@
                 {% if p['price'] and p['sqft'] %}
                     {{ (p['price'] / p['sqft'])|currency }}
                 {% else %}-{% endif %}
+            </td>
+            <td>
+                {% if p['status'] %}
+                    <span class="badge {{ p['status']|status_badge_class }}">{{ p['status'] }}</span>
+                {% else %}
+                    <span class="badge badge-green">Active</span>
+                {% endif %}
             </td>
             <td>
                 {% if p['url'] in eval_map %}
