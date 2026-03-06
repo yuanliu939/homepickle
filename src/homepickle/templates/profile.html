@@ -9,11 +9,19 @@
         This text is included in every AI property evaluation to personalize
         the analysis. Auto-saves as you type.
     </p>
-    <p id="save-status" class="text-muted" style="font-size:0.8rem; margin-bottom:1rem; min-height:1.2em;"></p>
-
     <div class="form-group">
         <textarea id="preferences" name="preferences"
                   >{{ profile['preferences'] if profile else '' }}</textarea>
+        <div style="display:flex; justify-content:space-between; margin-top:0.4rem;">
+            <span id="save-status" style="font-size:0.8rem; color:var(--muted);">
+                {% if profile and profile['preferences'] %}
+                    Saved ({{ profile['preferences']|length }} characters)
+                {% endif %}
+            </span>
+            <span id="char-count" style="font-size:0.8rem; color:var(--muted);">
+                {{ (profile['preferences']|length) if profile and profile['preferences'] else 0 }} chars
+            </span>
+        </div>
     </div>
 </div>
 
@@ -41,13 +49,19 @@
 (function() {
     var textarea = document.getElementById('preferences');
     var status = document.getElementById('save-status');
+    var charCount = document.getElementById('char-count');
     var timer = null;
     var lastSaved = textarea.value;
+
+    function updateCharCount() {
+        charCount.textContent = textarea.value.length + ' chars';
+    }
 
     function save() {
         var text = textarea.value;
         if (text === lastSaved) return;
         status.textContent = 'Saving...';
+        status.style.color = 'var(--muted)';
         fetch('/profile/save', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -57,16 +71,20 @@
         .then(function(data) {
             if (data.ok) {
                 lastSaved = text;
-                status.textContent = 'Saved.';
-                setTimeout(function() {
-                    if (status.textContent === 'Saved.') status.textContent = '';
-                }, 2000);
+                status.textContent = 'Saved (' + text.length + ' characters)';
+                status.style.color = 'var(--green)';
             }
         })
-        .catch(function() { status.textContent = 'Save failed.'; });
+        .catch(function() {
+            status.textContent = 'Save failed — will retry.';
+            status.style.color = 'var(--red)';
+        });
     }
 
     textarea.addEventListener('input', function() {
+        updateCharCount();
+        status.textContent = 'Unsaved changes';
+        status.style.color = 'var(--orange)';
         clearTimeout(timer);
         timer = setTimeout(save, 1000);
     });
