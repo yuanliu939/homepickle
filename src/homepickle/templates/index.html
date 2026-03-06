@@ -29,18 +29,26 @@
 {% endif %}
 
 {% if properties %}
+{% macro sort_link(col, label, right=False) %}
+{% set next_order = 'asc' if active_sort == col and active_order == 'desc' else 'desc' %}
+{% set arrow = ' &darr;' if active_sort == col and active_order == 'desc' else (' &uarr;' if active_sort == col else '') %}
+<th class="{{ 'text-right' if right else '' }}">
+    <a class="sort-link{{ ' active' if active_sort == col else '' }}"
+       href="/?sort={{ col }}&order={{ next_order }}{{ '&list=' + active_list|urlencode if active_list else '' }}{{ '&city=' + active_city|urlencode if active_city else '' }}">{{ label }}{{ arrow|safe }}</a>
+</th>
+{% endmacro %}
 <table>
     <thead>
         <tr>
             <th></th>
-            <th>Address</th>
-            <th>City</th>
-            <th class="text-right">Price</th>
+            {{ sort_link('address', 'Address') }}
+            {{ sort_link('city', 'City') }}
+            {{ sort_link('price', 'Price', right=True) }}
             <th class="text-right">Beds</th>
             <th class="text-right">Baths</th>
-            <th class="text-right">Sqft</th>
-            <th class="text-right">$/sqft</th>
-            <th>Status</th>
+            {{ sort_link('sqft', 'Sqft', right=True) }}
+            {{ sort_link('ppsf', '$/sqft', right=True) }}
+            {{ sort_link('status', 'Status') }}
             <th>Evaluation</th>
         </tr>
     </thead>

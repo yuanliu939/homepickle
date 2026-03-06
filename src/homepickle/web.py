@@ -35,6 +35,71 @@ def _inline(text: str) -> str:
     return text
 
 
+_STATUS_ORDER = {
+    "ACTIVE": 0,
+    "COMING SOON": 1,
+    "PENDING": 2,
+    "CONTINGENT": 3,
+    "UNDER CONTRACT": 4,
+    "SOLD": 5,
+}
+
+
+def _status_sort_key(status: str | None) -> tuple[int, str]:
+    """Return a sort key for a property status.
+
+    Args:
+        status: Listing status text, or None for active listings.
+
+    Returns:
+        A tuple of (order_rank, status_text) for sorting.
+    """
+    if not status:
+        return (0, "")
+    s = status.upper()
+    for keyword, rank in _STATUS_ORDER.items():
+        if keyword in s:
+            return (rank, s)
+    return (6, s)
+
+
+def _sort_properties(
+    properties: list, sort: str, order: str
+) -> list:
+    """Sort a list of property rows by the given column.
+
+    Args:
+        properties: List of sqlite3.Row objects.
+        sort: Column name to sort by, or 'status' for status ordering.
+        order: 'asc' or 'desc'.
+
+    Returns:
+        Sorted list.
+    """
+    reverse = order == "desc"
+
+    if sort == "status":
+        properties.sort(key=lambda p: _status_sort_key(p["status"]), reverse=reverse)
+    elif sort == "ppsf":
+        def _ppsf(p: dict) -> float:
+            if p["price"] and p["sqft"]:
+                return p["price"] / p["sqft"]
+            return 0.0 if not reverse else float("inf")
+        properties.sort(key=_ppsf, reverse=reverse)
+    else:
+        def _key(p: dict) -> tuple:
+            try:
+                val = p[sort]
+            except (KeyError, IndexError):
+                return (1, "")
+            if val is None:
+                return (1, "")
+            return (0, val)
+        properties.sort(key=_key, reverse=reverse)
+
+    return properties
+
+
 def create_app() -> Flask:
     """Create and configure the Flask application.
 
@@ -168,6 +233,8 @@ def create_app() -> Flask:
         try:
             list_name = request.args.get("list")
             city = request.args.get("city")
+            sort = request.args.get("sort", "updated_at")
+            order = request.args.get("order", "desc")
 
             if list_name:
                 properties = get_properties_for_list(conn, list_name)
@@ -176,6 +243,8 @@ def create_app() -> Flask:
 
             if city:
                 properties = [p for p in properties if p["city"] == city]
+
+            properties = _sort_properties(list(properties), sort, order)
 
             # Build evaluation lookup.
             all_evals = get_all_evaluations(conn)
@@ -192,6 +261,8 @@ def create_app() -> Flask:
                 cities=cities,
                 active_list=list_name,
                 active_city=city,
+                active_sort=sort,
+                active_order=order,
                 total_evaluated=len(eval_map),
             )
         finally:
