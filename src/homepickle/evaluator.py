@@ -100,18 +100,23 @@ def _run_claude(system_prompt: str, user_message: str, model: str) -> str:
     Raises:
         RuntimeError: If the claude CLI exits with an error.
     """
-    result = subprocess.run(
-        [
-            "claude",
-            "-p",
-            "--model", model,
-            "--system-prompt", system_prompt,
-            user_message,
-        ],
-        capture_output=True,
-        text=True,
-        timeout=600,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "claude",
+                "-p",
+                "--model", model,
+                "--system-prompt", system_prompt,
+                user_message,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            "claude CLI timed out after 600 seconds"
+        ) from exc
     if result.returncode != 0:
         raise RuntimeError(
             f"claude CLI failed (exit {result.returncode}): {result.stderr}"

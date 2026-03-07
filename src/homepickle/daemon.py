@@ -107,15 +107,18 @@ def _process_regeneration_queue(conn, profile: str) -> int:
         label = f"{prop.address}, {prop.city}" if prop.city else prop.address
         log.info("  Regenerating: %s", label)
 
-        result = personalize_evaluation(
-            prop, base_eval["evaluation_text"], profile
-        )
-        save_personalized_evaluation(
-            conn, url, base_eval["id"], DEFAULT_MODEL, result, profile
-        )
-        clear_regeneration(conn, url)
-        conn.commit()
-        count += 1
+        try:
+            result = personalize_evaluation(
+                prop, base_eval["evaluation_text"], profile
+            )
+            save_personalized_evaluation(
+                conn, url, base_eval["id"], DEFAULT_MODEL, result, profile
+            )
+            clear_regeneration(conn, url)
+            conn.commit()
+            count += 1
+        except Exception:
+            log.exception("  Failed to regenerate %s, skipping.", label)
 
     return count
 
@@ -184,20 +187,25 @@ async def _run_sync_cycle() -> str:
                 )
                 log.info("[%d/%d] %s", i + 1, len(to_evaluate), label)
 
-                page_text = await scrape_property_page(context, prop.url)
-                text_hash = hashlib.sha256(
-                    page_text.encode()
-                ).hexdigest()[:16]
+                try:
+                    page_text = await scrape_property_page(
+                        context, prop.url
+                    )
+                    text_hash = hashlib.sha256(
+                        page_text.encode()
+                    ).hexdigest()[:16]
 
-                log.info("  Evaluating with Claude...")
-                evaluation = evaluate_property(prop, page_text)
+                    log.info("  Evaluating with Claude...")
+                    evaluation = evaluate_property(prop, page_text)
 
-                save_evaluation(
-                    conn, prop.url, DEFAULT_MODEL, evaluation,
-                    text_hash, prop.price,
-                )
-                conn.commit()
-                base_count += 1
+                    save_evaluation(
+                        conn, prop.url, DEFAULT_MODEL, evaluation,
+                        text_hash, prop.price,
+                    )
+                    conn.commit()
+                    base_count += 1
+                except Exception:
+                    log.exception("  Failed to evaluate %s, skipping.", label)
 
         # --- Tier 2: Personalized evaluations ---
         profile_row = get_profile(conn)
@@ -218,8 +226,17 @@ async def _run_sync_cycle() -> str:
                     conn, prop.url, base_eval["id"], profile
                 ):
                     continue
-                _run_personalization(conn, prop, profile)
-                personal_count += 1
+                try:
+                    _run_personalization(conn, prop, profile)
+                    personal_count += 1
+                except Exception:
+                    label = (
+                        f"{prop.address}, {prop.city}"
+                        if prop.city else prop.address
+                    )
+                    log.exception(
+                        "  Failed to personalize %s, skipping.", label
+                    )
 
         # --- Process regeneration queue ---
         regen_count = 0
