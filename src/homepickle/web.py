@@ -1,7 +1,6 @@
 """Flask web application for browsing property evaluations."""
 
-import re
-
+import markdown as md
 from flask import Flask, jsonify, render_template, request
 from markupsafe import Markup
 
@@ -21,24 +20,6 @@ from homepickle.storage import (
     request_regeneration,
     save_profile,
 )
-
-
-def _inline(text: str) -> str:
-    """Convert inline markdown (bold, italic) to HTML.
-
-    Args:
-        text: A single line of markdown text.
-
-    Returns:
-        The line with inline formatting converted to HTML tags.
-    """
-    # Escape HTML first.
-    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    # Bold: **text**
-    text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
-    # Italic: *text*
-    text = re.sub(r"\*(.+?)\*", r"<em>\1</em>", text)
-    return text
 
 
 def _is_sold(status: str | None) -> bool:
@@ -128,10 +109,7 @@ def create_app() -> Flask:
 
     @app.template_filter("render_markdown")
     def render_markdown_filter(text: str) -> Markup:
-        """Convert simple markdown to HTML.
-
-        Handles headings, bold, lists, and paragraphs. Not a full markdown
-        parser — just enough for Claude's evaluation output.
+        """Convert markdown text to HTML using the markdown library.
 
         Args:
             text: Markdown text.
@@ -139,55 +117,8 @@ def create_app() -> Flask:
         Returns:
             Safe HTML markup.
         """
-        lines = text.split("\n")
-        html_lines: list[str] = []
-        in_list = False
-        list_type = ""
-
-        for line in lines:
-            stripped = line.strip()
-
-            # Close list if needed.
-            if in_list and not re.match(r"^(\d+\.|[-*])\s", stripped):
-                html_lines.append(f"</{list_type}>")
-                in_list = False
-
-            # Headings.
-            if stripped.startswith("## "):
-                html_lines.append(f"<h2>{_inline(stripped[3:])}</h2>")
-            elif stripped.startswith("### "):
-                html_lines.append(f"<h3>{_inline(stripped[4:])}</h3>")
-            # Numbered list.
-            elif re.match(r"^\d+\.\s", stripped):
-                if not in_list or list_type != "ol":
-                    if in_list:
-                        html_lines.append(f"</{list_type}>")
-                    html_lines.append("<ol>")
-                    in_list = True
-                    list_type = "ol"
-                content = re.sub(r"^\d+\.\s*", "", stripped)
-                html_lines.append(f"<li>{_inline(content)}</li>")
-            # Bullet list.
-            elif re.match(r"^[-*]\s", stripped):
-                if not in_list or list_type != "ul":
-                    if in_list:
-                        html_lines.append(f"</{list_type}>")
-                    html_lines.append("<ul>")
-                    in_list = True
-                    list_type = "ul"
-                content = stripped[2:]
-                html_lines.append(f"<li>{_inline(content)}</li>")
-            # Empty line.
-            elif not stripped:
-                html_lines.append("")
-            # Paragraph.
-            else:
-                html_lines.append(f"<p>{_inline(stripped)}</p>")
-
-        if in_list:
-            html_lines.append(f"</{list_type}>")
-
-        return Markup("\n".join(html_lines))
+        html = md.markdown(text, extensions=["tables", "fenced_code"])
+        return Markup(html)
 
     @app.template_filter("currency")
     def currency_filter(value: int | float | None) -> str:
