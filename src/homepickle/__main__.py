@@ -4,10 +4,10 @@ Usage:
     uv run homepickle login              # Interactive login, saves cookies
     uv run homepickle scrape             # Scrape favorites and print JSON
     uv run homepickle analyze            # Scrape and print analysis report
-    uv run homepickle sync [--quiet]     # Scrape, diff, evaluate new/changed, cache
+    uv run homepickle sync [--quiet] [--workers N]  # Scrape, diff, evaluate, cache
     uv run homepickle evaluate [url]     # LLM evaluation (one URL or all cached)
     uv run homepickle report             # Show all cached evaluations
-    uv run homepickle daemon [--interval N] # Continuous sync (default 60m)
+    uv run homepickle daemon [--interval N] [--workers N]  # Continuous sync
     uv run homepickle web [--host ADDR] [--port N]  # Start the web UI
     uv run homepickle debug              # Dump favorites page HTML + screenshot
 """
@@ -15,6 +15,7 @@ Usage:
 import asyncio
 import hashlib
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from homepickle.analyzer import format_report
@@ -102,6 +103,23 @@ async def _analyze() -> None:
         await _cleanup(pw, context)
 
 
+def _parse_int_flag(flag: str, default: int) -> int:
+    """Parse an integer CLI flag like --workers N.
+
+    Args:
+        flag: The flag name (e.g. "--workers").
+        default: Default value if flag is absent.
+
+    Returns:
+        The parsed integer value.
+    """
+    if flag in sys.argv:
+        idx = sys.argv.index(flag)
+        if idx + 1 < len(sys.argv):
+            return int(sys.argv[idx + 1])
+    return default
+
+
 async def _sync() -> None:
     """Scrape favorites, diff against cache, evaluate new/changed properties.
 
@@ -109,12 +127,14 @@ async def _sync() -> None:
     1. Scrape all favorite lists.
     2. Diff against the database to find new and removed properties.
     3. Scrape detail pages for properties that need evaluation.
-    4. Run LLM evaluation and cache results.
+    4. Run LLM evaluations in parallel and cache results.
     5. Print a summary of changes.
 
     Supports --quiet flag for cron-friendly output (only prints the summary).
+    Supports --workers N to set concurrent evaluations (default 4).
     """
     quiet = "--quiet" in sys.argv or "-q" in sys.argv
+    workers = _parse_int_flag("--workers", 4)
 
     def _log(msg: str) -> None:
         if not quiet:
@@ -136,12 +156,10 @@ async def _sync() -> None:
             properties = await scrape_properties(context, fav_list)
             _log(f"  {len(properties)} properties found.")
 
-            # Upsert all properties into DB.
             for prop in properties:
                 upsert_property(conn, prop)
             conn.commit()
 
-            # Diff against previous sync.
             new_props, removed_urls = sync_favorites(
                 conn, fav_list.name, properties
             )
@@ -156,7 +174,6 @@ async def _sync() -> None:
             total_removed += len(removed_urls)
             all_properties.extend(properties)
 
-            # Queue properties that need evaluation.
             for prop in properties:
                 if prop.url and needs_evaluation(conn, prop.url, prop.price):
                     to_evaluate.append(prop)
@@ -164,32 +181,49 @@ async def _sync() -> None:
         # --- Tier 1: Base evaluations ---
         base_count = 0
         if to_evaluate:
-            _log(f"\n{len(to_evaluate)} properties need base evaluation. "
-                 "Scraping detail pages...")
+            _log(f"\n{len(to_evaluate)} properties need base evaluation.")
 
+            # Phase 1: Scrape detail pages sequentially.
+            _log("Scraping detail pages...")
+            scraped: list[tuple[Property, str]] = []
             for i, prop in enumerate(to_evaluate):
                 if not prop.url:
                     continue
                 label = (f"{prop.address}, {prop.city}"
                          if prop.city else prop.address)
-                _log(f"\n  [{i + 1}/{len(to_evaluate)}] {label}")
-
-                _log("    Scraping detail page...")
+                _log(f"  [{i + 1}/{len(to_evaluate)}] {label}")
                 page_text = await scrape_property_page(context, prop.url)
-                text_hash = hashlib.sha256(
-                    page_text.encode()
-                ).hexdigest()[:16]
+                scraped.append((prop, page_text))
 
-                _log("    Evaluating with Claude...")
-                evaluation = evaluate_property(prop, page_text)
-
-                save_evaluation(
-                    conn, prop.url, DEFAULT_MODEL, evaluation,
-                    text_hash, prop.price,
-                )
-                conn.commit()
-                base_count += 1
-                _log("    Done.")
+            # Phase 2: Evaluate in parallel.
+            if scraped:
+                _log(f"\nEvaluating {len(scraped)} properties "
+                     f"with {workers} workers...")
+                with ThreadPoolExecutor(max_workers=workers) as executor:
+                    futures = {
+                        executor.submit(
+                            evaluate_property, prop, text
+                        ): (prop, text)
+                        for prop, text in scraped
+                    }
+                    for future in as_completed(futures):
+                        prop, page_text = futures[future]
+                        label = (f"{prop.address}, {prop.city}"
+                                 if prop.city else prop.address)
+                        try:
+                            evaluation = future.result()
+                            text_hash = hashlib.sha256(
+                                page_text.encode()
+                            ).hexdigest()[:16]
+                            save_evaluation(
+                                conn, prop.url, DEFAULT_MODEL,
+                                evaluation, text_hash, prop.price,
+                            )
+                            conn.commit()
+                            base_count += 1
+                            _log(f"  Done: {label}")
+                        except Exception as exc:
+                            _log(f"  Failed: {label} ({exc})")
 
         # --- Tier 2: Personalized evaluations ---
         profile_row = get_profile(conn)
@@ -197,6 +231,7 @@ async def _sync() -> None:
         personal_count = 0
 
         if profile:
+            to_personalize: list[tuple[Property, str, int]] = []
             for prop in all_properties:
                 if not prop.url:
                     continue
@@ -207,18 +242,36 @@ async def _sync() -> None:
                     conn, prop.url, base_eval["id"], profile
                 ):
                     continue
-                label = (f"{prop.address}, {prop.city}"
-                         if prop.city else prop.address)
-                _log(f"\n  Personalizing: {label}")
-                result = personalize_evaluation(
-                    prop, base_eval["evaluation_text"], profile
-                )
-                save_personalized_evaluation(
-                    conn, prop.url, base_eval["id"],
-                    DEFAULT_MODEL, result, profile,
-                )
-                conn.commit()
-                personal_count += 1
+                to_personalize.append((
+                    prop, base_eval["evaluation_text"], base_eval["id"]
+                ))
+
+            if to_personalize:
+                _log(f"\nPersonalizing {len(to_personalize)} properties "
+                     f"with {workers} workers...")
+                with ThreadPoolExecutor(max_workers=workers) as executor:
+                    futures = {
+                        executor.submit(
+                            personalize_evaluation, prop, base_text,
+                            profile
+                        ): (prop, base_id)
+                        for prop, base_text, base_id in to_personalize
+                    }
+                    for future in as_completed(futures):
+                        prop, base_id = futures[future]
+                        label = (f"{prop.address}, {prop.city}"
+                                 if prop.city else prop.address)
+                        try:
+                            result = future.result()
+                            save_personalized_evaluation(
+                                conn, prop.url, base_id,
+                                DEFAULT_MODEL, result, profile,
+                            )
+                            conn.commit()
+                            personal_count += 1
+                            _log(f"  Done: {label}")
+                        except Exception as exc:
+                            _log(f"  Failed: {label} ({exc})")
 
         parts = [f"Sync complete. {total_new} new, {total_removed} removed"]
         if base_count:
@@ -341,15 +394,11 @@ def _web() -> None:
     from homepickle.web import run_server
 
     host = "127.0.0.1"
-    port = 8080
     if "--host" in sys.argv:
         idx = sys.argv.index("--host")
         if idx + 1 < len(sys.argv):
             host = sys.argv[idx + 1]
-    if "--port" in sys.argv:
-        idx = sys.argv.index("--port")
-        if idx + 1 < len(sys.argv):
-            port = int(sys.argv[idx + 1])
+    port = _parse_int_flag("--port", 8080)
 
     run_server(host=host, port=port)
 
@@ -358,10 +407,11 @@ async def _daemon() -> None:
     """Run the continuously polling sync daemon.
 
     Supports --interval N to set minutes between cycles (default 60).
+    Supports --workers N to set concurrent evaluations (default 4).
     """
     import logging
 
-    from homepickle.daemon import run_daemon
+    from homepickle.daemon import DEFAULT_WORKERS, run_daemon
 
     logging.basicConfig(
         level=logging.INFO,
@@ -369,13 +419,10 @@ async def _daemon() -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    interval = 60
-    if "--interval" in sys.argv:
-        idx = sys.argv.index("--interval")
-        if idx + 1 < len(sys.argv):
-            interval = int(sys.argv[idx + 1])
+    interval = _parse_int_flag("--interval", 60)
+    workers = _parse_int_flag("--workers", DEFAULT_WORKERS)
 
-    await run_daemon(interval_minutes=interval)
+    await run_daemon(interval_minutes=interval, workers=workers)
 
 
 async def _debug() -> None:
